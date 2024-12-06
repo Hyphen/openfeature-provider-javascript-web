@@ -1,9 +1,9 @@
-import type { EvaluationContext } from '@openfeature/web-sdk';
+import type { EvaluationContext, Logger } from '@openfeature/web-sdk';
 
 export type HyphenProviderOptions = {
-  /** The application name or application id */
+  /** The application name or ID for the current evaluation. */
   application: string;
-  /** The environment for the Hyphen project */
+  /** The environment for the Hyphen project (e.g., `production`, `staging`). */
   environment: string;
   /** The Hyphen server URL */
   horizonServerUrls?: string[];
@@ -15,9 +15,9 @@ export interface HyphenEvaluationContext extends EvaluationContext {
   /** The IP address of the user making the request. */
   ipAddress: string;
   /** The application name or ID for the current evaluation. */
-  // application?: string | undefined;
+  application: string;
   /** The environment for the Hyphen project (e.g., `production`, `staging`). */
-  // environment?: string | undefined;
+  environment: string;
   /** Custom attributes for additional contextual information. */
   customAttributes: Record<string, any>;
   /** An object containing user-specific information for the evaluation. */
@@ -44,3 +44,11 @@ export interface Evaluation {
 export interface EvaluationResponse {
   toggles: Record<string, Evaluation>;
 }
+
+export type EvaluationParams<T> = {
+  flagKey: string;
+  value: T;
+  expectedType: Evaluation['type'];
+  evaluation?: Evaluation;
+  logger: Logger;
+};

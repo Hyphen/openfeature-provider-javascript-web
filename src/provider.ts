@@ -12,19 +12,17 @@ import {
   ProviderEvents,
   type ResolutionDetails,
   StandardResolutionReasons,
+  TypeMismatchError,
 } from '@openfeature/web-sdk';
 
 import pkg from '../package.json';
-import type { Evaluation, HyphenEvaluationContext, HyphenProviderOptions } from './types';
+import {
+  type Evaluation,
+  type EvaluationParams,
+  type HyphenEvaluationContext,
+  type HyphenProviderOptions,
+} from './types';
 import { HyphenClient } from './hyphenClient';
-
-type EvaluationParams<T> = {
-  flagKey: string;
-  value: T;
-  expectedType: Evaluation['type'];
-  evaluation?: Evaluation;
-  logger: Logger;
-};
 
 export class HyphenProvider implements Provider {
   public readonly options: HyphenProviderOptions;
@@ -36,7 +34,7 @@ export class HyphenProvider implements Provider {
     name: 'hyphen-toggle-web',
     version: pkg.version,
   };
-  private cache: { [key: string]: Evaluation } = {};
+  public cache: { [key: string]: Evaluation } = {};
 
   constructor(publicKey: string, options: HyphenProviderOptions) {
     if (!options.application) {
@@ -120,7 +118,6 @@ export class HyphenProvider implements Provider {
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> {
     const evaluation = this.cache[flagKey];
-
     const evaluationError = this.getEvaluationParseError({
       flagKey,
       evaluation,
@@ -130,12 +127,34 @@ export class HyphenProvider implements Provider {
     });
     if (evaluationError) return evaluationError;
 
-    const value = expectedType === 'object' ? JSON.parse(evaluation.value.toString()) : evaluation.value;
+    const value = this.validateFlagType(expectedType, evaluation.value as string);
+
     return {
       value: value as T,
       variant: evaluation.value.toString(),
       reason: evaluation.reason,
     };
+  }
+
+  validateFlagType<T extends string>(type: Evaluation['type'], value: T): string | number | boolean | object {
+    switch (type) {
+      case 'number': {
+        const parsedValue = parseFloat(value);
+        if (isNaN(parsedValue)) {
+          throw new TypeMismatchError(`default value does not match type ${type}`);
+        }
+        return parsedValue;
+      }
+      case 'object': {
+        try {
+          return JSON.parse(value);
+        } catch {
+          throw new TypeMismatchError(`default value does not match type ${type}`);
+        }
+      }
+      default:
+        return value;
+    }
   }
 
   wrongType<T>({ flagKey, value, evaluation, expectedType, logger }: EvaluationParams<T>): ResolutionDetails<T> {
