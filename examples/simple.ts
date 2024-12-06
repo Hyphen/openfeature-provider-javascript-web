@@ -34,7 +34,6 @@ await OpenFeature.setContext(context);
 const client = OpenFeature.getClient();
 
 // Evaluate your feature flag
-// @ts-ignore
 const data = client.getNumberDetails('my-number-toggle', 0);
 
 console.log('Data', data.value);
