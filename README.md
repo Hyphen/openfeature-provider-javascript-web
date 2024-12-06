@@ -34,43 +34,66 @@ To integrate the Hyphen Toggle provider into your application, follow these step
 2. **Set the context**: Set the context for the feature evaluation.
 2. **Evaluate a feature toggle**: Use the client to evaluate a feature flag.
 
-```typescript
-import { OpenFeature } from '@openfeature/web-sdk';
-import { HyphenProvider, type HyphenProviderOptions } from '@hyphen/openfeature-web-provider';
+```typescript jsx
+import { useEffect, useState } from 'react'
+import { OpenFeature } from "@openfeature/web-sdk";
+import { HyphenEvaluationContext, HyphenProviderOptions, HyphenProvider } from '@hyphen/openfeature-web-provider';
 
-const publicKey = "your-public-key-here";
+function App() {
+  const [featureFlagValue, setFeatureFlagValue] = useState<number>(0);
 
-const options: HyphenProviderOptions = {
-application: 'your-application-name',
-environment: 'production',
-};
+  const publicKey = 'your-public-key';
 
-const context: HyphenEvaluationContext = {
-  targetingKey: 'user-123',
-  ipAddress: '203.0.113.42',
-  customAttributes: {
-    subscriptionLevel: 'premium',
-    region: 'us-east',
-  },
-  user: {
-    id: 'user-123',
-    email: 'user@example.com',
-    name: 'John Doe',
+  const options: HyphenProviderOptions = {
+    application: 'app',
+    environment: 'production',
+  };
+
+  const context: HyphenEvaluationContext = {
+    targetingKey: 'target-key-1',
+    ipAddress: '203.0.113.42',
     customAttributes: {
-      role: 'admin',
+      subscriptionLevel: 'premium',
+      region: 'us-east',
     },
-  },
-};
+    user: {
+      id: 'user-123',
+      email: 'user@example.com',
+      name: 'John Doe',
+      customAttributes: {
+        role: 'admin',
+      },
+    },
+  };
+
+  useEffect(() => {
+    const setupOpenFeature = async () => {
+      try {
+        await OpenFeature.setProviderAndWait(new HyphenProvider(publicKey, options));
+        await OpenFeature.setContext(context);
+
+        const client = OpenFeature.getClient();
+        const data = client.getNumberDetails('my-number-toggle', 0);
+        setFeatureFlagValue(data.value);
+      
+      } catch (error) {
+        console.error('Error setting up OpenFeature:', error);
+      }
+    };
+
+    setupOpenFeature();
+  }, []);
 
 
-await OpenFeature.setProviderAndWait(new HyphenProvider(publicKey, options));
-await OpenFeature.setContext(context);
+  return (
+    <>
+      <h1>OpenFeature Example</h1>
+      <p>Feature flag value: {featureFlagValue}</p>
+    </>
+  );
+}
 
-const client = OpenFeature.getClient();
-
-const flagDetails = client.getBooleanDetails('feature-flag-key', false);
-
-console.log(flagDetails.value); // true or false
+export default App
 ```
 
 ## Configuration
