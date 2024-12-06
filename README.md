@@ -31,6 +31,7 @@ npm install @openfeature/web-sdk @hyphen/openfeature-web-provider
 To integrate the Hyphen Toggle provider into your application, follow these steps:
 
 1. **Set up the provider**: Register the `HyphenProvider` with OpenFeature using your `publicKey` and provider options.
+2. **Set the context**: Set the context for the feature evaluation.
 2. **Evaluate a feature toggle**: Use the client to evaluate a feature flag.
 
 ```typescript
@@ -44,21 +45,6 @@ application: 'your-application-name',
 environment: 'production',
 };
 
-await OpenFeature.setProviderAndWait(new HyphenProvider(publicKey, options));
-await OpenFeature.setContext(context);
-
-const client = OpenFeature.getClient();
-
-const flagDetails = await client.getBooleanDetails('feature-flag-key', false);
-
-console.log(flagDetails.value); // true or false
-```
-
-### Example: Contextual Evaluation
-
-To evaluate a feature flag with specific user or application context, define and pass an `EvaluationContext`:
-
-```typescript
 const context: HyphenEvaluationContext = {
   targetingKey: 'user-123',
   ipAddress: '203.0.113.42',
@@ -76,10 +62,15 @@ const context: HyphenEvaluationContext = {
   },
 };
 
-// Evaluate the toggle with context
-const flagDetailsWithContext = await client.getBooleanDetails(toggleKey, defaultValue, context);
 
-console.log(flagDetailsWithContext.value); // true or false
+await OpenFeature.setProviderAndWait(new HyphenProvider(publicKey, options));
+await OpenFeature.setContext(context);
+
+const client = OpenFeature.getClient();
+
+const flagDetails = client.getBooleanDetails('feature-flag-key', false);
+
+console.log(flagDetails.value); // true or false
 ```
 
 ## Configuration
