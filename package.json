@@ -36,6 +36,11 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.15.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.1",
+    "@semantic-release/release-notes-generator": "^14.0.1",
     "@types/eslint-config-prettier": "^6.11.3",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
@@ -43,11 +48,10 @@
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.3.3",
     "ts-loader": "^9.5.1",
+    "semantic-release": "^24.2.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.5",
-    "webpack": "^5.96.1",
-    "webpack-cli": "^5.1.4"
+    "vitest": "^2.1.5"
   },
   "release": {
     "branches": [
