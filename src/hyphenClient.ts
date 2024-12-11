@@ -21,7 +21,6 @@ export class HyphenClient {
   ): Promise<EvaluationResponse> {
     let lastError: unknown;
     let evaluationResponse;
-
     for (const url of serverUrls) {
       try {
         const response = await fetch(url, {
