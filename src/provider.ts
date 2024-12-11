@@ -1,4 +1,5 @@
 import lscache from 'lscache';
+import hash from 'object-hash';
 import {
   type BeforeHookContext,
   ErrorCode,
@@ -29,7 +30,7 @@ export class HyphenProvider implements Provider {
   public readonly options: HyphenProviderOptions;
   private readonly hyphenClient: HyphenClient;
   private readonly cacheClient = lscache;
-  private ttlSeconds = 30;
+  private ttlMinutes = 1;
 
   public events: OpenFeatureEventEmitter;
   public runsOn: Paradigm = 'client';
@@ -50,7 +51,7 @@ export class HyphenProvider implements Provider {
     this.hyphenClient = new HyphenClient(publicKey, options.horizonServerUrls);
     this.options = options;
     this.events = new OpenFeatureEventEmitter();
-    this.ttlSeconds = options.cache?.ttlSeconds || this.ttlSeconds;
+    this.ttlMinutes = options.cache?.ttlSeconds ? options.cache.ttlSeconds / 60 : this.ttlMinutes;
     this.events.addHandler(ProviderEvents.ContextChanged, async () => {
       this.cacheClient.flush();
     });
@@ -97,7 +98,7 @@ export class HyphenProvider implements Provider {
       const evaluationResponse = await this.hyphenClient.evaluate(context as HyphenEvaluationContext);
       const cacheKey = this.generateCacheKey(context as HyphenEvaluationContext);
 
-      this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlSeconds);
+      this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlMinutes);
     }
   }
 
@@ -106,7 +107,7 @@ export class HyphenProvider implements Provider {
       const evaluationResponse = await this.hyphenClient.evaluate(newContext as HyphenEvaluationContext);
       const cacheKey = this.generateCacheKey(newContext as HyphenEvaluationContext);
 
-      this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlSeconds);
+      this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlMinutes);
     }
   }
 
@@ -120,7 +121,7 @@ export class HyphenProvider implements Provider {
     const contextKey = this.generateCacheKey(context as HyphenEvaluationContext);
     const cache = this.cacheClient.get(contextKey) || {};
 
-    const evaluation = cache[flagKey];
+    const evaluation = cache.toggles?.[flagKey];
     const evaluationError = this.getEvaluationParseError({
       flagKey,
       evaluation,
@@ -210,7 +211,7 @@ export class HyphenProvider implements Provider {
     if (this.options.cache?.generateCacheKey && typeof this.options.cache.generateCacheKey === 'function') {
       return this.options.cache.generateCacheKey(context);
     }
-    return `${this.options.application}-${this.options.environment}-${context.targetingKey}`;
+    return hash(context);
   }
 
   resolveBooleanEvaluation(

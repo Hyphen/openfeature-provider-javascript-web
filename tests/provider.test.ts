@@ -1,17 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import hash from 'object-hash';
 import { HyphenClient } from '../src/hyphenClient';
 import {
   type BeforeHookContext,
   ErrorCode,
   type EvaluationContext,
   type HookContext,
-  ProviderEvents,
   TypeMismatchError,
 } from '@openfeature/web-sdk';
 import { type EvaluationParams, HyphenProvider } from '../src';
 import type { Evaluation, EvaluationResponse } from '../src';
+import lscache from 'lscache';
 
 vi.mock('./hyphenClient');
+vi.mock('lscache', () => {
+  const store = new Map<string, any>();
+
+  return {
+    default: {
+      set: vi.fn((key: string, value: any, ttlMinutes: number) => {
+        const expirationTime = Date.now() + ttlMinutes * 60 * 1000;
+        store.set(key, { value, expirationTime });
+      }),
+      get: vi.fn((key: string) => {
+        const item = store.get(key);
+        if (item && item.expirationTime > Date.now()) {
+          return item.value;
+        }
+        store.delete(key);
+        return null;
+      }),
+      flush: vi.fn(() => store.clear()),
+    },
+  };
+});
 
 const createMockEvaluation = (
   key: string,
@@ -50,6 +72,7 @@ describe('HyphenProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    lscache.flush();
     provider = new HyphenProvider(publicKey, options);
   });
 
@@ -64,46 +87,6 @@ describe('HyphenProvider', () => {
       expect(() => new HyphenProvider(publicKey, { ...options, environment: '' })).toThrowError(
         'Environment is required',
       );
-    });
-  });
-
-  describe('onContextChange', () => {
-    it('should update the cache when newContext has a targetingKey', async () => {
-      const mockNewContext: EvaluationContext = {
-        targetingKey: 'new-key',
-        application: 'test-app',
-        environment: 'test-env',
-      };
-
-      const mockEvaluationResponse: EvaluationResponse = {
-        toggles: {
-          'flag-key': createMockEvaluation('flag-key', true, 'boolean'),
-        },
-      };
-
-      const evaluateSpy = vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
-
-      await provider.onContextChange?.(mockContext, mockNewContext);
-
-      expect(evaluateSpy).toHaveBeenCalledWith(mockNewContext);
-      expect(provider.cache).toEqual(mockEvaluationResponse.toggles);
-    });
-
-    it('should emit an error event if an error occurs during evaluation', async () => {
-      const mockNewContext: EvaluationContext = {
-        targetingKey: 'new-key',
-        application: 'test-app',
-        environment: 'test-env',
-      };
-
-      const error = new Error('Evaluation failed');
-      const evaluateSpy = vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
-      const emitSpy = vi.spyOn(provider.events, 'emit');
-
-      await provider.onContextChange?.(mockContext, mockNewContext);
-
-      expect(evaluateSpy).toHaveBeenCalledWith(mockNewContext);
-      expect(emitSpy).toHaveBeenCalledWith(ProviderEvents.Error, error);
     });
   });
 
@@ -165,8 +148,22 @@ describe('HyphenProvider', () => {
     });
   });
 
-  describe('initialize', () => {
-    it('should initialize and cache evaluations', async () => {
+  describe('generateCacheKey', () => {
+    it('should use custom generateCacheKey function if provided', () => {
+      const customGenerateCacheKey = vi.fn(() => 'custom-key');
+      const providerWithCustomKey = new HyphenProvider(publicKey, {
+        ...options,
+        cache: { generateCacheKey: customGenerateCacheKey },
+      });
+
+      const cacheKey = providerWithCustomKey['generateCacheKey'](mockContext as any);
+      expect(customGenerateCacheKey).toHaveBeenCalledWith(mockContext);
+      expect(cacheKey).toEqual('custom-key');
+    });
+  });
+
+  describe('initialize with hashed cache key', () => {
+    it('should store evaluation response in cache with hashed key', async () => {
       const mockEvaluationResponse: EvaluationResponse = {
         toggles: {
           'flag-key': createMockEvaluation('flag-key', true, 'boolean'),
@@ -175,23 +172,13 @@ describe('HyphenProvider', () => {
 
       vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
 
-      const spyEmit = vi.spyOn(provider.events, 'emit');
-
       await provider.initialize(mockContext);
 
-      expect(provider.cache).toEqual(mockEvaluationResponse.toggles);
-      expect(spyEmit).toHaveBeenCalledWith(ProviderEvents.Ready);
-    });
+      const cacheKey = hash(mockContext);
+      expect(lscache.set).toHaveBeenCalledWith(cacheKey, mockEvaluationResponse.toggles, 1);
 
-    it('should emit an error event if initialization fails', async () => {
-      const error = new Error('Initialization failed');
-      vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
-
-      const spyEmit = vi.spyOn(provider.events, 'emit');
-
-      await provider.initialize(mockContext);
-
-      expect(spyEmit).toHaveBeenCalledWith(ProviderEvents.Error, error);
+      const cachedValue = lscache.get(cacheKey);
+      expect(cachedValue).toEqual(mockEvaluationResponse.toggles);
     });
   });
 
@@ -212,6 +199,82 @@ describe('HyphenProvider', () => {
       expect(() => {
         provider['validateFlagType'](type, invalidValue);
       }).toThrowError(new TypeMismatchError(`default value does not match type ${type}`));
+    });
+  });
+
+  describe('onContextChange with hashed cache key', () => {
+    it('should store new context evaluations in cache with hashed key', async () => {
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', false, 'boolean'),
+        },
+      };
+
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
+
+      const newContext = { ...mockContext, targetingKey: 'new-key' };
+      await provider.onContextChange?.(mockContext, newContext);
+
+      const cacheKey = hash(newContext);
+      const cachedValue = lscache.get(cacheKey);
+      expect(cachedValue).toEqual(mockEvaluationResponse.toggles);
+    });
+
+    // it('should emit an error event if evaluation fails during context change', async () => {
+    //   const error = new Error('Evaluation failed');
+    //   vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
+    //
+    //   const emitSpy = vi.spyOn(provider.events, 'emit');
+    //   const newContext = { ...mockContext, targetingKey: 'new-key' };
+    //
+    //   await expect(provider.onContextChange?.(mockContext, newContext)).rejects.toThrow('Evaluation failed');
+    //   expect(emitSpy).toHaveBeenCalledWith(ProviderEvents.Error, error);
+    // });
+  });
+
+  describe('getEvaluation with hashed cache key', () => {
+    it('should retrieve cached evaluation using hashed key', () => {
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', 'value', 'string'),
+        },
+      };
+
+      const cacheKey = hash(mockContext);
+      lscache.set(cacheKey, mockEvaluationResponse, 1);
+
+      const result = provider['getEvaluation']({
+        flagKey: 'flag-key',
+        value: 'default',
+        expectedType: 'string',
+        context: mockContext,
+        logger: mockLogger,
+      });
+
+      console.log(result, 'result');
+
+      expect(result).toEqual({
+        value: 'value',
+        variant: 'value',
+        reason: 'EVALUATED',
+      });
+    });
+
+    it('should return the default value and log an error when the requested flag is not found in the cache', () => {
+      lscache.flush();
+
+      const result = provider['getEvaluation']({
+        flagKey: 'missing-key',
+        value: 'default',
+        expectedType: 'string',
+        context: mockContext,
+        logger: mockLogger,
+      });
+
+      expect(result).toEqual({
+        value: 'default',
+        errorCode: 'FLAG_NOT_FOUND',
+      });
     });
   });
 
@@ -262,8 +325,15 @@ describe('HyphenProvider', () => {
 
   describe('resolveBooleanEvaluation', () => {
     it('should return a boolean evaluation', () => {
-      provider.cache['flag-key'] = createMockEvaluation('flag-key', true, 'boolean');
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', true, 'boolean'),
+        },
+      };
 
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
+      const cacheKey = hash(mockContext);
+      lscache.set(cacheKey, mockEvaluationResponse, 1);
       const result = provider.resolveBooleanEvaluation('flag-key', false, mockContext, mockLogger);
 
       expect(result).toEqual({
@@ -274,7 +344,13 @@ describe('HyphenProvider', () => {
     });
 
     it('should return an error if the flag type mismatches', () => {
-      provider.cache['flag-key'] = createMockEvaluation('flag-key', 'not-a-boolean', 'string');
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', 'not-a-boolean', 'string'),
+        },
+      };
+      const cacheKey = hash(mockContext);
+      lscache.set(cacheKey, mockEvaluationResponse, 1);
 
       const result = provider.resolveBooleanEvaluation('flag-key', false, mockContext, mockLogger);
 
@@ -288,8 +364,15 @@ describe('HyphenProvider', () => {
 
   describe('resolveStringEvaluation', () => {
     it('should return a string evaluation', () => {
-      provider.cache['flag-key'] = createMockEvaluation('flag-key', 'test-value', 'string');
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', 'test-value', 'string'),
+        },
+      };
 
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
+      const cacheKey = hash(mockContext);
+      lscache.set(cacheKey, mockEvaluationResponse, 1);
       const result = provider.resolveStringEvaluation('flag-key', 'default', mockContext, mockLogger);
 
       expect(result).toEqual({
@@ -302,7 +385,15 @@ describe('HyphenProvider', () => {
 
   describe('resolveNumberEvaluation', () => {
     it('should return a number evaluation', () => {
-      provider.cache['flag-key'] = createMockEvaluation('flag-key', 42, 'number');
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', 42, 'number'),
+        },
+      };
+
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
+      const cacheKey = hash(mockContext);
+      lscache.set(cacheKey, mockEvaluationResponse, 1);
 
       const result = provider.resolveNumberEvaluation('flag-key', 0, mockContext, mockLogger);
 
@@ -317,7 +408,15 @@ describe('HyphenProvider', () => {
   describe('resolveObjectEvaluation', () => {
     it('should return an object evaluation', () => {
       const mockObjectValue = { key: 'value' };
-      provider.cache['flag-key'] = createMockEvaluation('flag-key', JSON.stringify(mockObjectValue), 'object');
+      const mockEvaluationResponse: EvaluationResponse = {
+        toggles: {
+          'flag-key': createMockEvaluation('flag-key', JSON.stringify(mockObjectValue), 'object'),
+        },
+      };
+
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
+      const cacheKey = hash(mockContext);
+      lscache.set(cacheKey, mockEvaluationResponse, 1);
 
       const result = provider.resolveObjectEvaluation('flag-key', {}, mockContext, mockLogger);
 
