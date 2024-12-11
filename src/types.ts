@@ -7,6 +7,10 @@ export type HyphenProviderOptions = {
   environment: string;
   /** The Hyphen server URL */
   horizonServerUrls?: string[];
+  cache?: {
+    ttlSeconds?: number;
+    generateCacheKey?: (context: HyphenEvaluationContext) => string;
+  };
 };
 
 export interface HyphenEvaluationContext extends EvaluationContext {
@@ -50,5 +54,6 @@ export type EvaluationParams<T> = {
   value: T;
   expectedType: Evaluation['type'];
   evaluation?: Evaluation;
+  context?: EvaluationContext;
   logger: Logger;
 };

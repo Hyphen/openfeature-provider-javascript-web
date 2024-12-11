@@ -1,3 +1,4 @@
+import store from 'store2';
 import {
   type BeforeHookContext,
   ErrorCode,
@@ -27,6 +28,7 @@ import { HyphenClient } from './hyphenClient';
 export class HyphenProvider implements Provider {
   public readonly options: HyphenProviderOptions;
   private readonly hyphenClient: HyphenClient;
+  private readonly cacheClient = store;
   public events: OpenFeatureEventEmitter;
   public runsOn: Paradigm = 'client';
   public hooks: Hook[];
@@ -34,7 +36,6 @@ export class HyphenProvider implements Provider {
     name: 'hyphen-toggle-web',
     version: pkg.version,
   };
-  public cache: { [key: string]: Evaluation } = {};
 
   constructor(publicKey: string, options: HyphenProviderOptions) {
     if (!options.application) {
@@ -44,9 +45,14 @@ export class HyphenProvider implements Provider {
       throw new Error('Environment is required');
     }
 
+    this.events = new OpenFeatureEventEmitter();
     this.hyphenClient = new HyphenClient(publicKey, options.horizonServerUrls);
     this.options = options;
-    this.events = new OpenFeatureEventEmitter();
+
+    this.events.addHandler(ProviderEvents.ContextChanged, async () => {
+      this.cacheClient.clearAll();
+    });
+
     this.hooks = [
       {
         before: this.beforeHook,
@@ -68,11 +74,7 @@ export class HyphenProvider implements Provider {
     return newContext;
   };
 
-  errorHook = async (
-    hookContext: HookContext,
-    error: unknown,
-    // hints: HookHints
-  ): Promise<void> => {
+  errorHook = async (hookContext: HookContext, error: unknown): Promise<void> => {
     if (error instanceof Error) {
       hookContext.logger.error('Error', error.message);
     } else {
@@ -89,14 +91,10 @@ export class HyphenProvider implements Provider {
   };
 
   async initialize(context?: EvaluationContext): Promise<void> {
-    try {
-      if (context && context.targetingKey) {
-        const evaluationResponse = await this.hyphenClient.evaluate(context as HyphenEvaluationContext);
-        this.cache = evaluationResponse.toggles;
-        this.events.emit(ProviderEvents.Ready);
-      }
-    } catch (error) {
-      this.events.emit(ProviderEvents.Error, error as any);
+    if (context && context.targetingKey) {
+      const evaluationResponse = await this.hyphenClient.evaluate(context as HyphenEvaluationContext);
+      const cacheKey = this.generateCacheKey(context as HyphenEvaluationContext);
+      this.cacheClient.set(cacheKey, evaluationResponse.toggles);
     }
   }
 
@@ -104,7 +102,10 @@ export class HyphenProvider implements Provider {
     try {
       if (newContext.targetingKey) {
         const evaluationResponse = await this.hyphenClient.evaluate(newContext as HyphenEvaluationContext);
-        this.cache = evaluationResponse.toggles;
+
+        const cacheKey = this.generateCacheKey(newContext as HyphenEvaluationContext);
+
+        this.cacheClient.set(cacheKey, evaluationResponse.toggles);
       }
     } catch (error) {
       this.events.emit(ProviderEvents.Error, error as any);
@@ -115,9 +116,13 @@ export class HyphenProvider implements Provider {
     flagKey,
     value: defaultValue,
     expectedType,
+    context,
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> {
-    const evaluation = this.cache[flagKey];
+    const contextKey = this.generateCacheKey(context as HyphenEvaluationContext);
+    const cache = this.cacheClient.get(contextKey) || {};
+
+    const evaluation = cache[flagKey];
     const evaluationError = this.getEvaluationParseError({
       flagKey,
       evaluation,
@@ -193,8 +198,21 @@ export class HyphenProvider implements Provider {
     }
 
     if (evaluation?.type !== expectedType) {
-      return this.wrongType({ flagKey, value: defaultValue, evaluation, expectedType, logger });
+      return this.wrongType({
+        flagKey,
+        value: defaultValue,
+        evaluation,
+        expectedType,
+        logger,
+      });
     }
+  }
+
+  private generateCacheKey(context: HyphenEvaluationContext): string {
+    if (this.options.cache?.generateCacheKey && typeof this.options.cache.generateCacheKey === 'function') {
+      return this.options.cache.generateCacheKey(context);
+    }
+    return `${this.options.application}-${this.options.environment}-${context.targetingKey}`;
   }
 
   resolveBooleanEvaluation(
@@ -203,7 +221,13 @@ export class HyphenProvider implements Provider {
     context: EvaluationContext,
     logger: Logger,
   ): ResolutionDetails<boolean> {
-    return this.getEvaluation({ flagKey, value: defaultValue, expectedType: 'boolean', logger });
+    return this.getEvaluation({
+      flagKey,
+      value: defaultValue,
+      expectedType: 'boolean',
+      context,
+      logger,
+    });
   }
 
   resolveStringEvaluation(
@@ -212,7 +236,13 @@ export class HyphenProvider implements Provider {
     context: EvaluationContext,
     logger: Logger,
   ): ResolutionDetails<string> {
-    return this.getEvaluation({ flagKey, value: defaultValue, expectedType: 'string', logger });
+    return this.getEvaluation({
+      flagKey,
+      value: defaultValue,
+      expectedType: 'string',
+      context,
+      logger,
+    });
   }
 
   resolveNumberEvaluation(
@@ -221,7 +251,13 @@ export class HyphenProvider implements Provider {
     context: EvaluationContext,
     logger: Logger,
   ): ResolutionDetails<number> {
-    return this.getEvaluation({ flagKey, value: defaultValue, expectedType: 'number', logger });
+    return this.getEvaluation({
+      flagKey,
+      value: defaultValue,
+      expectedType: 'number',
+      context,
+      logger,
+    });
   }
 
   resolveObjectEvaluation<T extends JsonValue>(
@@ -230,7 +266,13 @@ export class HyphenProvider implements Provider {
     context: EvaluationContext,
     logger: Logger,
   ): ResolutionDetails<T> {
-    return this.getEvaluation({ flagKey, value: defaultValue, expectedType: 'object', logger });
+    return this.getEvaluation({
+      flagKey,
+      value: defaultValue,
+      expectedType: 'object',
+      context,
+      logger,
+    });
   }
 
   private validateContext(context: EvaluationContext): HyphenEvaluationContext {
