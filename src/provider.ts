@@ -11,7 +11,6 @@ import {
   OpenFeatureEventEmitter,
   type Paradigm,
   type Provider,
-  ProviderEvents,
   type ResolutionDetails,
   StandardResolutionReasons,
   TypeMismatchError,
@@ -52,9 +51,6 @@ export class HyphenProvider implements Provider {
     this.options = options;
     this.events = new OpenFeatureEventEmitter();
     this.ttlMinutes = options.cache?.ttlSeconds ? options.cache.ttlSeconds / 60 : this.ttlMinutes;
-    this.events.addHandler(ProviderEvents.ContextChanged, async () => {
-      this.cacheClient.flush();
-    });
 
     this.hooks = [
       {
@@ -121,7 +117,7 @@ export class HyphenProvider implements Provider {
     const contextKey = this.generateCacheKey(context as HyphenEvaluationContext);
     const cache = this.cacheClient.get(contextKey) || {};
 
-    const evaluation = cache.toggles?.[flagKey];
+    const evaluation = cache?.[flagKey];
     const evaluationError = this.getEvaluationParseError({
       flagKey,
       evaluation,
