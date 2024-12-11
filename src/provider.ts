@@ -1,4 +1,3 @@
-import store from 'store2';
 import {
   type BeforeHookContext,
   ErrorCode,
@@ -15,6 +14,8 @@ import {
   StandardResolutionReasons,
   TypeMismatchError,
 } from '@openfeature/web-sdk';
+import store from 'store';
+import expirePlugin from 'store/plugins/expire';
 
 import pkg from '../package.json';
 import {
@@ -25,10 +26,14 @@ import {
 } from './types';
 import { HyphenClient } from './hyphenClient';
 
+store.addPlugin(expirePlugin);
+
 export class HyphenProvider implements Provider {
   public readonly options: HyphenProviderOptions;
   private readonly hyphenClient: HyphenClient;
   private readonly cacheClient = store;
+  private ttlSeconds = 30;
+
   public events: OpenFeatureEventEmitter;
   public runsOn: Paradigm = 'client';
   public hooks: Hook[];
@@ -45,10 +50,10 @@ export class HyphenProvider implements Provider {
       throw new Error('Environment is required');
     }
 
-    this.events = new OpenFeatureEventEmitter();
     this.hyphenClient = new HyphenClient(publicKey, options.horizonServerUrls);
     this.options = options;
-
+    this.events = new OpenFeatureEventEmitter();
+    this.ttlSeconds = options.cache?.ttlSeconds || this.ttlSeconds;
     this.events.addHandler(ProviderEvents.ContextChanged, async () => {
       this.cacheClient.clearAll();
     });
@@ -94,21 +99,19 @@ export class HyphenProvider implements Provider {
     if (context && context.targetingKey) {
       const evaluationResponse = await this.hyphenClient.evaluate(context as HyphenEvaluationContext);
       const cacheKey = this.generateCacheKey(context as HyphenEvaluationContext);
-      this.cacheClient.set(cacheKey, evaluationResponse.toggles);
+
+      // @ts-expect-error - store typings are incorrect
+      this.cacheClient.set(cacheKey, evaluationResponse.toggles, new Date().getTime() + this.ttlSeconds);
     }
   }
 
   async onContextChange?(oldContext: EvaluationContext, newContext: EvaluationContext): Promise<void> {
-    try {
-      if (newContext.targetingKey) {
-        const evaluationResponse = await this.hyphenClient.evaluate(newContext as HyphenEvaluationContext);
+    if (newContext.targetingKey) {
+      const evaluationResponse = await this.hyphenClient.evaluate(newContext as HyphenEvaluationContext);
+      const cacheKey = this.generateCacheKey(newContext as HyphenEvaluationContext);
 
-        const cacheKey = this.generateCacheKey(newContext as HyphenEvaluationContext);
-
-        this.cacheClient.set(cacheKey, evaluationResponse.toggles);
-      }
-    } catch (error) {
-      this.events.emit(ProviderEvents.Error, error as any);
+      // @ts-expect-error - store typings are incorrect
+      this.cacheClient.set(cacheKey, evaluationResponse.toggles, new Date().getTime() + this.ttlSeconds);
     }
   }
 
