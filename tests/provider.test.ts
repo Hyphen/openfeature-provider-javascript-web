@@ -489,4 +489,23 @@ describe('HyphenProvider', () => {
       expect(setCacheSpy).not.toHaveBeenCalled();
     });
   });
+
+  describe('Cache TTL configuration', () => {
+    it('should set ttlMinutes from options.cache.ttlSeconds when provided', () => {
+      const optionsWithCache = {
+        ...options,
+        cache: {
+          ttlSeconds: 300, // 5 minutes in seconds
+        },
+      };
+
+      const providerWithCache = new HyphenProvider(publicKey, optionsWithCache);
+      expect(providerWithCache['ttlMinutes']).toBe(5); // 300 seconds / 60 = 5 minutes
+    });
+
+    it('should keep default ttlMinutes when cache.ttlSeconds is not provided', () => {
+      const providerWithoutCache = new HyphenProvider(publicKey, options);
+      expect(providerWithoutCache['ttlMinutes']).toBe(1); // Default value
+    });
+  });
 });
