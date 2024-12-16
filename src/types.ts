@@ -1,4 +1,4 @@
-import type { EvaluationContext, Logger } from '@openfeature/web-sdk';
+import type { EvaluationContext, FlagValue, Logger, ResolutionReason } from '@openfeature/web-sdk';
 
 export type HyphenProviderOptions = {
   /** The application name or ID for the current evaluation. */
@@ -44,14 +44,21 @@ export interface HyphenEvaluationContext extends OptionalContextProperties {
 
 export interface Evaluation {
   key: string;
-  value: boolean | string | number | Record<string, any>;
+  value: FlagValue;
   type: 'boolean' | 'string' | 'number' | 'object';
-  reason: string;
-  errorMessage: string;
+  reason?: ResolutionReason;
+  errorMessage?: string;
 }
 
 export interface EvaluationResponse {
   toggles: Record<string, Evaluation>;
+}
+
+export interface TelemetryPayload {
+  context: HyphenEvaluationContext;
+  data: {
+    toggle: Evaluation;
+  };
 }
 
 export type EvaluationParams<T> = {

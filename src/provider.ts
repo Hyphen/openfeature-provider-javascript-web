@@ -4,6 +4,8 @@ import {
   type BeforeHookContext,
   ErrorCode,
   type EvaluationContext,
+  EvaluationDetails,
+  FlagValue,
   type Hook,
   type HookContext,
   type JsonValue,
@@ -22,6 +24,7 @@ import {
   type EvaluationParams,
   type HyphenEvaluationContext,
   type HyphenProviderOptions,
+  TelemetryPayload,
 } from './types';
 import { HyphenClient } from './hyphenClient';
 
@@ -56,24 +59,24 @@ export class HyphenProvider implements Provider {
       {
         before: this.beforeHook,
         error: this.errorHook,
-        finally: this.finallyHook,
+        after: this.afterHook,
       },
     ];
   }
 
-  beforeHook = async (hookContext: BeforeHookContext): Promise<EvaluationContext> => {
-    const newContext: EvaluationContext = {
-      ...hookContext.context,
-      application: this.options.application,
-      environment: this.options.environment,
+  beforeHook = async ({ context }: BeforeHookContext): Promise<EvaluationContext> => {
+    const { application, environment } = this.options;
+
+    return {
+      ...context,
+      application,
+      environment,
+      targetingKey: this.getTargetingKey(context as HyphenEvaluationContext),
     };
-
-    this.validateContext(newContext);
-
-    return newContext;
   };
 
   errorHook = async (hookContext: HookContext, error: unknown): Promise<void> => {
+    console.log('errorHook', error);
     if (error instanceof Error) {
       hookContext.logger.error('Error', error.message);
     } else {
@@ -81,29 +84,67 @@ export class HyphenProvider implements Provider {
     }
   };
 
-  finallyHook = async (
-    hookContext: HookContext,
-    // hints: HookHints
-  ): Promise<void> => {
-    // This is a good place to log client usage. This will be post MVP
-    hookContext.logger.info('logging usage');
+  afterHook = async (hookContext: HookContext, evaluationDetails: EvaluationDetails<FlagValue>): Promise<void> => {
+    const parsedEvaluationDetails = {
+      key: evaluationDetails.flagKey,
+      value: evaluationDetails.value,
+      type: hookContext.flagValueType,
+      reason: evaluationDetails.reason,
+    };
+
+    try {
+      const payload: TelemetryPayload = {
+        context: hookContext.context as HyphenEvaluationContext,
+        data: { toggle: parsedEvaluationDetails },
+      };
+
+      await this.hyphenClient.postTelemetry(payload);
+      hookContext.logger.info('Payload sent to postTelemetry:', JSON.stringify(payload));
+    } catch (error) {
+      hookContext.logger.error('Error in afterHook:', error);
+      throw error;
+    }
   };
+
+  private getTargetingKey(hyphenEvaluationContext: HyphenEvaluationContext): string {
+    if (hyphenEvaluationContext.targetingKey) {
+      return hyphenEvaluationContext.targetingKey;
+    }
+    if (hyphenEvaluationContext.user) {
+      return hyphenEvaluationContext.user.id;
+    }
+    // TODO: what is a better way to do this? Should we also have a service property so we don't add the random value?
+    return `${this.options.application}-${this.options.environment}-${Math.random().toString(36).substring(7)}`;
+  }
 
   async initialize(context?: EvaluationContext): Promise<void> {
     if (context && context.targetingKey) {
-      const evaluationResponse = await this.hyphenClient.evaluate(context as HyphenEvaluationContext);
-      const cacheKey = this.generateCacheKey(context as HyphenEvaluationContext);
+      const validatedContext = this.validateContext(context);
 
-      this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlMinutes);
+      if (validatedContext) {
+        const evaluationResponse = await this.hyphenClient.evaluate(validatedContext);
+        const cacheKey = this.generateCacheKey(validatedContext);
+
+        this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlMinutes);
+      }
     }
   }
 
   async onContextChange?(oldContext: EvaluationContext, newContext: EvaluationContext): Promise<void> {
-    if (newContext.targetingKey) {
-      const evaluationResponse = await this.hyphenClient.evaluate(newContext as HyphenEvaluationContext);
-      const cacheKey = this.generateCacheKey(newContext as HyphenEvaluationContext);
+    const hasContextChanged = !this.isContextEqual(oldContext, newContext);
 
-      this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlMinutes);
+    try {
+      const validatedNewContext = this.validateContext(newContext);
+
+      if (hasContextChanged) {
+        const evaluationResponse = await this.hyphenClient.evaluate(validatedNewContext);
+        const cacheKey = this.generateCacheKey(validatedNewContext);
+
+        const toggles = evaluationResponse.toggles;
+        this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
+      }
+    } catch (error: any) {
+      throw new Error(`Error updating context: ${error.message}`);
     }
   }
 
@@ -136,6 +177,14 @@ export class HyphenProvider implements Provider {
     };
   }
 
+  private isContextEqual(context1: EvaluationContext, context2: EvaluationContext): boolean {
+    if (!context1 || !context2) {
+      return false;
+    }
+
+    return context1.targetingKey === context2.targetingKey && JSON.stringify(context1) === JSON.stringify(context2);
+  }
+
   validateFlagType<T extends string>(type: Evaluation['type'], value: T): string | number | boolean | object {
     switch (type) {
       case 'number': {
@@ -155,59 +204,6 @@ export class HyphenProvider implements Provider {
       default:
         return value;
     }
-  }
-
-  wrongType<T>({ flagKey, value, evaluation, expectedType, logger }: EvaluationParams<T>): ResolutionDetails<T> {
-    logger.error(`Type mismatch for flag ${flagKey}. Expected ${expectedType}, got ${evaluation!.type}.`);
-
-    return {
-      value,
-      reason: StandardResolutionReasons.ERROR,
-      errorCode: ErrorCode.TYPE_MISMATCH,
-    };
-  }
-
-  private getEvaluationParseError<T>({
-    flagKey,
-    evaluation,
-    expectedType,
-    value: defaultValue,
-    logger,
-  }: EvaluationParams<T>): ResolutionDetails<T> | undefined {
-    if (!evaluation) {
-      logger.error(`Flag ${flagKey} not found in evaluation response.`);
-      return {
-        value: defaultValue,
-        errorCode: ErrorCode.FLAG_NOT_FOUND,
-      };
-    }
-
-    if (evaluation.errorMessage) {
-      logger.error(`Error evaluating flag ${flagKey}: ${evaluation.errorMessage}`);
-
-      return {
-        value: defaultValue,
-        errorMessage: evaluation?.errorMessage,
-        errorCode: ErrorCode.GENERAL,
-      };
-    }
-
-    if (evaluation?.type !== expectedType) {
-      return this.wrongType({
-        flagKey,
-        value: defaultValue,
-        evaluation,
-        expectedType,
-        logger,
-      });
-    }
-  }
-
-  private generateCacheKey(context: HyphenEvaluationContext): string {
-    if (this.options.cache?.generateCacheKey && typeof this.options.cache.generateCacheKey === 'function') {
-      return this.options.cache.generateCacheKey(context);
-    }
-    return hash(context);
   }
 
   resolveBooleanEvaluation(
@@ -268,6 +264,65 @@ export class HyphenProvider implements Provider {
       context,
       logger,
     });
+  }
+
+  private wrongType<T>({
+    flagKey,
+    value,
+    evaluation,
+    expectedType,
+    logger,
+  }: EvaluationParams<T>): ResolutionDetails<T> {
+    logger.error(`Type mismatch for flag ${flagKey}. Expected ${expectedType}, got ${evaluation!.type}.`);
+
+    return {
+      value,
+      reason: StandardResolutionReasons.ERROR,
+      errorCode: ErrorCode.TYPE_MISMATCH,
+    };
+  }
+
+  private getEvaluationParseError<T>({
+    flagKey,
+    evaluation,
+    expectedType,
+    value: defaultValue,
+    logger,
+  }: EvaluationParams<T>): ResolutionDetails<T> | undefined {
+    if (!evaluation) {
+      logger.error(`Flag ${flagKey} not found in evaluation response.`);
+      return {
+        value: defaultValue,
+        errorCode: ErrorCode.FLAG_NOT_FOUND,
+      };
+    }
+
+    if (evaluation.errorMessage) {
+      logger.error(`Error evaluating flag ${flagKey}: ${evaluation.errorMessage}`);
+
+      return {
+        value: defaultValue,
+        errorMessage: evaluation?.errorMessage,
+        errorCode: ErrorCode.GENERAL,
+      };
+    }
+
+    if (evaluation?.type !== expectedType) {
+      return this.wrongType({
+        flagKey,
+        value: defaultValue,
+        evaluation,
+        expectedType,
+        logger,
+      });
+    }
+  }
+
+  private generateCacheKey(context: HyphenEvaluationContext): string {
+    if (this.options.cache?.generateCacheKey && typeof this.options.cache.generateCacheKey === 'function') {
+      return this.options.cache.generateCacheKey(context);
+    }
+    return hash(context);
   }
 
   private validateContext(context: EvaluationContext): HyphenEvaluationContext {

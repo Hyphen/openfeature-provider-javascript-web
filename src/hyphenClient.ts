@@ -1,5 +1,5 @@
-import type { EvaluationResponse, HyphenEvaluationContext } from './types';
-import { horizon } from './config';
+import { EvaluationResponse, HyphenEvaluationContext, TelemetryPayload } from './types';
+import { horizonEndpoints } from './config';
 
 export class HyphenClient {
   private readonly publicKey: string;
@@ -7,7 +7,7 @@ export class HyphenClient {
 
   constructor(publicKey: string, horizonServerUrls: string[] = []) {
     this.publicKey = publicKey;
-    horizonServerUrls.push(horizon.url);
+    horizonServerUrls.push(horizonEndpoints.evaluate);
     this.horizonServerUrls = horizonServerUrls;
   }
 
@@ -15,37 +15,50 @@ export class HyphenClient {
     return await this.fetchEvaluationResponse(this.horizonServerUrls, context);
   }
 
+  async postTelemetry(payload: TelemetryPayload) {
+    await this.httpPost(horizonEndpoints.telemetry, payload);
+  }
+
   private async fetchEvaluationResponse(
     serverUrls: string[],
     context: HyphenEvaluationContext,
   ): Promise<EvaluationResponse> {
     let lastError: unknown;
-    let evaluationResponse;
+
     for (const url of serverUrls) {
       try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': this.publicKey,
-          },
-          body: JSON.stringify(context),
-        });
-
-        if (response.ok) {
-          evaluationResponse = <EvaluationResponse>await response.json();
-        } else {
-          const errorText = await response.text();
-          lastError = new Error(errorText);
-          console.debug('Failed to fetch evaluation: ', url, errorText);
-        }
+        const response = await this.httpPost(url, context);
+        return await response.json();
       } catch (error) {
         lastError = error;
+        console.debug('Failed to fetch evaluation: ', url, error);
       }
     }
 
-    if (evaluationResponse) {
-      return evaluationResponse;
+    throw lastError;
+  }
+
+  private async httpPost(url: string, payload: any) {
+    let lastError: unknown;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.publicKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        return response;
+      } else {
+        const errorText = await response.text();
+        lastError = new Error(errorText);
+        console.debug('Failed to fetch', url, errorText);
+      }
+    } catch (error) {
+      lastError = error;
     }
 
     throw lastError;
