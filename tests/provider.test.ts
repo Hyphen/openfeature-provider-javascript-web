@@ -443,4 +443,50 @@ describe('HyphenProvider', () => {
       });
     });
   });
+
+  describe('initialize', () => {
+    it('should not call evaluate if targetingKey is missing', async () => {
+      const evaluateSpy = vi.spyOn(HyphenClient.prototype, 'evaluate');
+      const contextWithoutKey: EvaluationContext = {
+        application: mockContext.application,
+        environment: mockContext.environment,
+      };
+
+      await provider.initialize(contextWithoutKey);
+
+      expect(evaluateSpy).not.toHaveBeenCalled();
+    });
+
+    it('should not cache if evaluate fails', async () => {
+      const error = new Error('Evaluation failed');
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
+      const setCacheSpy = vi.spyOn(lscache, 'set');
+
+      await expect(provider.initialize(mockContext)).rejects.toThrow(error);
+      expect(setCacheSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onContextChange', () => {
+    it('should not call evaluate if targetingKey is missing in new context', async () => {
+      const evaluateSpy = vi.spyOn(HyphenClient.prototype, 'evaluate');
+      const newContextWithoutKey: EvaluationContext = {
+        application: mockContext.application,
+        environment: mockContext.environment,
+      };
+
+      await provider.onContextChange?.(mockContext, newContextWithoutKey);
+
+      expect(evaluateSpy).not.toHaveBeenCalled();
+    });
+
+    it('should not cache if evaluate fails during context change', async () => {
+      const error = new Error('Evaluation failed');
+      vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
+      const setCacheSpy = vi.spyOn(lscache, 'set');
+
+      await expect(provider.onContextChange?.(mockContext, mockContext)).rejects.toThrow(error);
+      expect(setCacheSpy).not.toHaveBeenCalled();
+    });
+  });
 });
