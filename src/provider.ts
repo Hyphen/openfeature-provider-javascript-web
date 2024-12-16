@@ -76,11 +76,10 @@ export class HyphenProvider implements Provider {
   };
 
   errorHook = async (hookContext: HookContext, error: unknown): Promise<void> => {
-    console.log('errorHook', error);
     if (error instanceof Error) {
-      hookContext.logger.error('Error', error.message);
+      hookContext.logger.debug('Error', error.message);
     } else {
-      hookContext.logger.error('Error', error);
+      hookContext.logger.debug('Error', error);
     }
   };
 
@@ -98,10 +97,10 @@ export class HyphenProvider implements Provider {
         data: { toggle: parsedEvaluationDetails },
       };
 
-      await this.hyphenClient.postTelemetry(payload);
-      hookContext.logger.info('Payload sent to postTelemetry:', JSON.stringify(payload));
+      await this.hyphenClient.postTelemetry(payload, hookContext.logger);
+      hookContext.logger.debug('Payload sent to postTelemetry:', JSON.stringify(payload));
     } catch (error) {
-      hookContext.logger.error('Error in afterHook:', error);
+      hookContext.logger.debug('Error in afterHook:', error);
       throw error;
     }
   };
@@ -133,18 +132,13 @@ export class HyphenProvider implements Provider {
   async onContextChange?(oldContext: EvaluationContext, newContext: EvaluationContext): Promise<void> {
     const hasContextChanged = !this.isContextEqual(oldContext, newContext);
 
-    try {
-      const validatedNewContext = this.validateContext(newContext);
+    const validatedNewContext = this.validateContext(newContext);
+    if (hasContextChanged) {
+      const evaluationResponse = await this.hyphenClient.evaluate(validatedNewContext);
+      const cacheKey = this.generateCacheKey(validatedNewContext);
 
-      if (hasContextChanged) {
-        const evaluationResponse = await this.hyphenClient.evaluate(validatedNewContext);
-        const cacheKey = this.generateCacheKey(validatedNewContext);
-
-        const toggles = evaluationResponse.toggles;
-        this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
-      }
-    } catch (error: any) {
-      throw new Error(`Error updating context: ${error.message}`);
+      const toggles = evaluationResponse.toggles;
+      this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
     }
   }
 
@@ -273,7 +267,7 @@ export class HyphenProvider implements Provider {
     expectedType,
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> {
-    logger.error(`Type mismatch for flag ${flagKey}. Expected ${expectedType}, got ${evaluation!.type}.`);
+    logger.debug(`Type mismatch for flag ${flagKey}. Expected ${expectedType}, got ${evaluation!.type}.`);
 
     return {
       value,
@@ -290,7 +284,7 @@ export class HyphenProvider implements Provider {
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> | undefined {
     if (!evaluation) {
-      logger.error(`Flag ${flagKey} not found in evaluation response.`);
+      logger.debug(`Flag ${flagKey} not found in evaluation response.`);
       return {
         value: defaultValue,
         errorCode: ErrorCode.FLAG_NOT_FOUND,
@@ -298,7 +292,7 @@ export class HyphenProvider implements Provider {
     }
 
     if (evaluation.errorMessage) {
-      logger.error(`Error evaluating flag ${flagKey}: ${evaluation.errorMessage}`);
+      logger.debug(`Error evaluating flag ${flagKey}: ${evaluation.errorMessage}`);
 
       return {
         value: defaultValue,

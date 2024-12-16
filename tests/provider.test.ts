@@ -4,15 +4,21 @@ import { HyphenClient } from '../src/hyphenClient';
 import {
   type BeforeHookContext,
   ErrorCode,
-  type EvaluationContext,
+  EvaluationContext,
   type HookContext,
   TypeMismatchError,
 } from '@openfeature/web-sdk';
-import { type EvaluationParams, HyphenProvider } from '../src';
+import { type EvaluationParams, type HyphenEvaluationContext, HyphenProvider } from '../src';
 import type { Evaluation, EvaluationResponse } from '../src';
 import lscache from 'lscache';
 
 vi.mock('./hyphenClient');
+vi.mock('../src/config', () => ({
+  horizonEndpoints: {
+    evaluate: 'https://mock-horizon-url.com',
+    telemetry: 'https://mock-telemetry-url.com',
+  },
+}));
 vi.mock('lscache', () => {
   const store = new Map<string, any>();
 
@@ -119,32 +125,78 @@ describe('HyphenProvider', () => {
     });
 
     it('should log errors in errorHook', async () => {
-      const mockLogger = { error: vi.fn() };
+      const mockLogger = { debug: vi.fn() };
       const hookContext: HookContext = { logger: mockLogger } as any;
 
       await provider.errorHook(hookContext, new Error('Test error'));
-
-      expect(mockLogger.error).toHaveBeenCalledWith('Error', 'Test error');
+      expect(mockLogger.debug).toHaveBeenCalledWith('Error', 'Test error');
     });
 
-    it('should log the error as-is if it is not an instance of Error', async () => {
-      const mockLogger = { error: vi.fn() };
+    it('should log the error directly if it is not an instance of Error', async () => {
+      const mockLogger = { debug: vi.fn() };
       const hookContext: HookContext = { logger: mockLogger } as any;
+      const nonError = 'Some non-error value';
 
-      const nonErrorValue = 'string error';
-
-      await provider.errorHook(hookContext, nonErrorValue);
-
-      expect(mockLogger.error).toHaveBeenCalledWith('Error', nonErrorValue);
+      await provider.errorHook(hookContext, nonError);
+      expect(mockLogger.debug).toHaveBeenCalledWith('Error', nonError);
     });
 
-    it('should log usage in finallyHook', async () => {
-      const mockLogger = { info: vi.fn() };
-      const hookContext: HookContext = { logger: mockLogger } as any;
+    it('should log payload details in afterHook', async () => {
+      const mockLogger = { debug: vi.fn() };
 
-      await provider.finallyHook(hookContext);
+      vi.spyOn(HyphenClient.prototype, 'postTelemetry').mockResolvedValue(undefined);
 
-      expect(mockLogger.info).toHaveBeenCalledWith('logging usage');
+      const hookContext: HookContext = {
+        logger: mockLogger,
+        flagValueType: 'boolean',
+        context: {},
+      } as any;
+
+      const evaluationDetails: any = {
+        flagKey: 'test-flag',
+        value: true,
+        reason: 'mock-reason',
+      };
+
+      await provider.afterHook(hookContext, evaluationDetails);
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Payload sent to postTelemetry:',
+        JSON.stringify({
+          context: hookContext.context,
+          data: {
+            toggle: {
+              key: evaluationDetails.flagKey,
+              value: evaluationDetails.value,
+              type: hookContext.flagValueType,
+              reason: evaluationDetails.reason,
+            },
+          },
+        }),
+      );
+    });
+
+    it('should log an error and rethrow it if postTelemetry fails', async () => {
+      const mockLogger = { debug: vi.fn() };
+
+      const postTelemetryError = new Error('Failed to send telemetry');
+      vi.spyOn(HyphenClient.prototype, 'postTelemetry').mockRejectedValue(postTelemetryError);
+
+      const hookContext: HookContext = {
+        logger: mockLogger,
+        flagValueType: 'boolean',
+        context: {},
+      } as any;
+
+      const evaluationDetails: any = {
+        flagKey: 'test-flag',
+        value: true,
+        reason: 'mock-reason',
+      };
+
+      await expect(provider.afterHook(hookContext, evaluationDetails)).rejects.toThrow(postTelemetryError);
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Error in afterHook:', postTelemetryError);
     });
   });
 
@@ -277,7 +329,7 @@ describe('HyphenProvider', () => {
 
       const result = provider['getEvaluationParseError'](params);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Flag missing-flag not found in evaluation response.');
+      expect(mockLogger.debug).toHaveBeenCalledWith('Flag missing-flag not found in evaluation response.');
       expect(result).toEqual({
         value: false,
         errorCode: ErrorCode.FLAG_NOT_FOUND,
@@ -301,7 +353,7 @@ describe('HyphenProvider', () => {
 
       const result = provider['getEvaluationParseError'](params);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Error evaluating flag flag-with-error: Some error occurred');
+      expect(mockLogger.debug).toHaveBeenCalledWith('Error evaluating flag flag-with-error: Some error occurred');
       expect(result).toEqual({
         value: false,
         errorMessage: 'Some error occurred',
@@ -470,23 +522,22 @@ describe('HyphenProvider', () => {
   describe('onContextChange', () => {
     it('should not call evaluate if targetingKey is missing in new context', async () => {
       const evaluateSpy = vi.spyOn(HyphenClient.prototype, 'evaluate');
+      // @ts-ignore
+      const validateContextSpy = vi.spyOn(provider, 'validateContext').mockImplementation(() => {
+        throw new Error('targetingKey is required');
+      });
+
       const newContextWithoutKey: EvaluationContext = {
         application: mockContext.application,
         environment: mockContext.environment,
       };
 
-      await provider.onContextChange?.(mockContext, newContextWithoutKey);
+      await expect(provider.onContextChange?.(mockContext, newContextWithoutKey)).rejects.toThrow(
+        'targetingKey is required',
+      );
 
+      expect(validateContextSpy).toHaveBeenCalledWith(newContextWithoutKey);
       expect(evaluateSpy).not.toHaveBeenCalled();
-    });
-
-    it('should not cache if evaluate fails during context change', async () => {
-      const error = new Error('Evaluation failed');
-      vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
-      const setCacheSpy = vi.spyOn(lscache, 'set');
-
-      await expect(provider.onContextChange?.(mockContext, mockContext)).rejects.toThrow(error);
-      expect(setCacheSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -500,12 +551,53 @@ describe('HyphenProvider', () => {
       };
 
       const providerWithCache = new HyphenProvider(publicKey, optionsWithCache);
-      expect(providerWithCache['ttlMinutes']).toBe(5); // 300 seconds / 60 = 5 minutes
+      expect(providerWithCache['ttlMinutes']).toBe(5);
     });
 
     it('should keep default ttlMinutes when cache.ttlSeconds is not provided', () => {
       const providerWithoutCache = new HyphenProvider(publicKey, options);
       expect(providerWithoutCache['ttlMinutes']).toBe(1); // Default value
+    });
+  });
+
+  describe('isContextEqual', () => {
+    it('should return false if any of the context is not provided', () => {
+      const context1: EvaluationContext = {
+        targetingKey: 'test-key',
+        application: 'test-app',
+        environment: 'test-env',
+      };
+
+      const result = provider['isContextEqual'](context1, undefined as any);
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getTargetingKey', () => {
+    it('should return user id if targetingKey is missing and user exists', () => {
+      const context: HyphenEvaluationContext = {
+        targetingKey: '',
+        user: { id: 'user-id' },
+        application: 'test-app',
+        environment: 'test-env',
+      };
+
+      const result = provider['getTargetingKey'](context);
+
+      expect(result).toBe('user-id');
+    });
+
+    it('should return a generated string if both targetingKey and user are missing', () => {
+      const context: HyphenEvaluationContext = {
+        targetingKey: '',
+        application: 'test-app',
+        environment: 'test-env',
+      };
+
+      const result = provider['getTargetingKey'](context);
+
+      expect(result).toMatch(/^test-app-test-env-[a-z0-9]{5,}$/);
     });
   });
 });

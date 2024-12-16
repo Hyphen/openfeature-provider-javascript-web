@@ -1,13 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EvaluationResponse, HyphenEvaluationContext } from '../src';
 import { HyphenClient } from '../src/hyphenClient';
-import { horizon } from '../src/config';
 
 vi.stubGlobal('fetch', vi.fn());
 
+vi.mock('../src/config', () => ({
+  horizonEndpoints: {
+    evaluate: 'https://mock-horizon-url.com',
+    telemetry: 'https://mock-telemetry-url.com',
+  },
+}));
+
 describe('HyphenClient', () => {
   const publicKey = 'test-public-key';
-  const serverUrls = ['https://mock-horizon-url.com'];
+  const horizonUrl = 'https://mock-horizon-url.com';
+  const serverUrls = [horizonUrl];
+
   const mockContext: HyphenEvaluationContext = {
     targetingKey: 'test-key',
     ipAddress: '127.0.0.1',
@@ -29,14 +37,12 @@ describe('HyphenClient', () => {
         type: 'boolean',
         value: true,
         reason: 'mock-reason',
-        errorMessage: '',
       },
     },
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    horizon.url = serverUrls[0];
   });
 
   it('should successfully evaluate a flag', async () => {
@@ -77,22 +83,50 @@ describe('HyphenClient', () => {
   });
 
   it('should handle non-OK responses gracefully', async () => {
-    const client = new HyphenClient(publicKey);
-
+    const client = new HyphenClient(publicKey, serverUrls);
     const errorText = 'Error: Unauthorized';
-    vi.mocked(fetch).mockResolvedValueOnce({
+
+    vi.mocked(fetch).mockResolvedValue({
       ok: false,
       text: vi.fn().mockResolvedValue(errorText),
     } as unknown as Response);
 
     await expect(client.evaluate(mockContext)).rejects.toThrowError(errorText);
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com', expect.any(Object));
+
+    expect(fetch).toHaveBeenCalledWith(serverUrls[0], {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': publicKey,
+      },
+      body: JSON.stringify(mockContext),
+    });
   });
 
-  it('should use the default horizon URL if none provided', async () => {
+  it('should append the default horizon URL to the provided custom server URLs', async () => {
     const customUrl = 'https://custom-url.com';
     const client = new HyphenClient(publicKey, [customUrl]);
 
     expect(client['horizonServerUrls']).toEqual([customUrl, 'https://mock-horizon-url.com']);
+  });
+
+  it('should successfully send telemetry data', async () => {
+    const client = new HyphenClient(publicKey);
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn(),
+    } as unknown as Response);
+
+    await client.postTelemetry(mockContext as any); // No need to capture a result
+
+    expect(fetch).toHaveBeenCalledWith('https://mock-telemetry-url.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': publicKey,
+      },
+      body: JSON.stringify(mockContext),
+    });
   });
 });

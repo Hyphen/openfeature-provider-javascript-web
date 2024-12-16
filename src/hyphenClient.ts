@@ -1,5 +1,6 @@
 import { EvaluationResponse, HyphenEvaluationContext, TelemetryPayload } from './types';
 import { horizonEndpoints } from './config';
+import { Logger } from '@openfeature/web-sdk';
 
 export class HyphenClient {
   private readonly publicKey: string;
@@ -7,38 +8,38 @@ export class HyphenClient {
 
   constructor(publicKey: string, horizonServerUrls: string[] = []) {
     this.publicKey = publicKey;
-    horizonServerUrls.push(horizonEndpoints.evaluate);
-    this.horizonServerUrls = horizonServerUrls;
+    this.horizonServerUrls = [...horizonServerUrls, horizonEndpoints.evaluate];
   }
 
-  async evaluate(context: HyphenEvaluationContext): Promise<EvaluationResponse> {
-    return await this.fetchEvaluationResponse(this.horizonServerUrls, context);
+  async evaluate(context: HyphenEvaluationContext, logger?: Logger): Promise<EvaluationResponse> {
+    return await this.fetchEvaluationResponse(this.horizonServerUrls, context, logger);
   }
 
-  async postTelemetry(payload: TelemetryPayload) {
-    await this.httpPost(horizonEndpoints.telemetry, payload);
+  async postTelemetry(payload: TelemetryPayload, logger?: Logger) {
+    await this.httpPost(horizonEndpoints.telemetry, payload, logger);
   }
 
   private async fetchEvaluationResponse(
     serverUrls: string[],
     context: HyphenEvaluationContext,
+    logger?: Logger,
   ): Promise<EvaluationResponse> {
     let lastError: unknown;
 
     for (const url of serverUrls) {
       try {
-        const response = await this.httpPost(url, context);
+        const response = await this.httpPost(url, context, logger);
         return await response.json();
       } catch (error) {
         lastError = error;
-        console.debug('Failed to fetch evaluation: ', url, error);
+        logger?.debug('Failed to fetch evaluation: ', url, error);
       }
     }
 
     throw lastError;
   }
 
-  private async httpPost(url: string, payload: any) {
+  private async httpPost(url: string, payload: any, logger?: Logger) {
     let lastError: unknown;
     try {
       const response = await fetch(url, {
@@ -55,7 +56,7 @@ export class HyphenClient {
       } else {
         const errorText = await response.text();
         lastError = new Error(errorText);
-        console.debug('Failed to fetch', url, errorText);
+        logger?.debug('Failed to fetch', url, errorText);
       }
     } catch (error) {
       lastError = error;

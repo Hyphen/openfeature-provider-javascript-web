@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 describe('horizon configuration', () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -12,14 +12,14 @@ describe('horizon configuration', () => {
     process.env.NODE_ENV = 'production';
     const { horizon } = await import('../src/config');
 
-    expect(horizon.url).toBe('https://horizon.hyphen.ai/toggle/evaluate');
+    expect(horizon.url).toBe('https://horizon.hyphen.ai/toggle');
   });
 
   it('should use development URL when NODE_ENV is not production', async () => {
     process.env.NODE_ENV = 'development';
     const { horizon } = await import('../src/config');
 
-    expect(horizon.url).toBe('https://dev-horizon.hyphen.ai/toggle/evaluate');
+    expect(horizon.url).toBe('https://dev-horizon.hyphen.ai/toggle');
   });
 
   it('should use development URL when NODE_ENV is undefined', async () => {
@@ -27,6 +27,6 @@ describe('horizon configuration', () => {
     process.env.NODE_ENV = undefined as unknown as string;
     const { horizon } = await import('../src/config');
 
-    expect(horizon.url).toBe('https://dev-horizon.hyphen.ai/toggle/evaluate');
+    expect(horizon.url).toBe('https://dev-horizon.hyphen.ai/toggle');
   });
 });
