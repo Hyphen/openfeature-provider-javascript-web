@@ -55,13 +55,17 @@ export class HyphenProvider implements Provider {
     this.events = new OpenFeatureEventEmitter();
     this.ttlMinutes = options.cache?.ttlSeconds ? options.cache.ttlSeconds / 60 : this.ttlMinutes;
 
-    this.hooks = [
-      {
-        before: this.beforeHook,
-        error: this.errorHook,
-        after: this.afterHook,
-      },
-    ];
+    const hook: Hook = {
+      before: this.beforeHook,
+      after: this.afterHook,
+      error: this.errorHook,
+    };
+
+    if (options.enableToggleUsage === false) {
+      delete hook.after;
+    }
+
+    this.hooks = [hook];
   }
 
   beforeHook = async ({ context }: BeforeHookContext): Promise<EvaluationContext> => {
@@ -100,7 +104,7 @@ export class HyphenProvider implements Provider {
       await this.hyphenClient.postTelemetry(payload, hookContext.logger);
       hookContext.logger.debug('Payload sent to postTelemetry:', JSON.stringify(payload));
     } catch (error) {
-      hookContext.logger.debug('Error in afterHook:', error);
+      hookContext.logger.debug('Unable to log usage.', error);
       throw error;
     }
   };
@@ -166,7 +170,7 @@ export class HyphenProvider implements Provider {
 
     return {
       value: value as T,
-      variant: evaluation.value.toString(),
+      variant: evaluation.value?.toString(),
       reason: evaluation.reason,
     };
   }
@@ -301,7 +305,7 @@ export class HyphenProvider implements Provider {
       };
     }
 
-    if (evaluation?.type !== expectedType) {
+    if (evaluation.type !== expectedType) {
       return this.wrongType({
         flagKey,
         value: defaultValue,

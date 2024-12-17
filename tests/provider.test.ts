@@ -94,6 +94,16 @@ describe('HyphenProvider', () => {
         'Environment is required',
       );
     });
+    it('should delete the after hook if enableToggleUsage is false', () => {
+      const optionsWithToggleDisabled = {
+        ...options,
+        enableToggleUsage: false,
+      };
+
+      const providerWithToggleDisabled = new HyphenProvider(publicKey, optionsWithToggleDisabled);
+
+      expect(providerWithToggleDisabled.hooks.some((hook) => hook.after)).toBe(false);
+    });
   });
 
   describe('Hooks', () => {
@@ -196,7 +206,7 @@ describe('HyphenProvider', () => {
 
       await expect(provider.afterHook(hookContext, evaluationDetails)).rejects.toThrow(postTelemetryError);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith('Error in afterHook:', postTelemetryError);
+      expect(mockLogger.debug).toHaveBeenCalledWith('Unable to log usage.', postTelemetryError);
     });
   });
 

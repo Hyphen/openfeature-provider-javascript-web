@@ -7,6 +7,8 @@ export type HyphenProviderOptions = {
   environment: string;
   /** The Hyphen server URL */
   horizonServerUrls?: string[];
+  /** Flag to enable toggle usage */
+  enableToggleUsage?: boolean;
   /** The cache options for the provider */
   cache?: {
     /** The time-to-live (TTL) in seconds for the cache. */
