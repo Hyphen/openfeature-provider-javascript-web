@@ -71,7 +71,11 @@ export class HyphenProvider implements Provider {
   beforeHook = async ({ context }: BeforeHookContext): Promise<EvaluationContext> => {
     const { application, environment } = this.options;
     const evaluationContext = { ...context, application, environment };
-    evaluationContext.targetingKey = this.getTargetingKey(evaluationContext as HyphenEvaluationContext);
+
+    if (!evaluationContext.targetingKey) {
+      evaluationContext.targetingKey = this.getTargetingKey(evaluationContext as HyphenEvaluationContext);
+    }
+
     return evaluationContext;
   };
 
@@ -124,14 +128,29 @@ export class HyphenProvider implements Provider {
     this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
   }
 
+  async initialize(context?: EvaluationContext): Promise<void> {
+    if (context && context.targetingKey) {
+      const { application, environment } = this.options;
+      const validatedContext = this.validateContext({ ...context, application, environment });
+      await this.fetchAndCacheEvaluation(validatedContext);
+    }
+  }
+
   async onContextChange?(oldContext: EvaluationContext, newContext: EvaluationContext): Promise<void> {
     const { application, environment } = this.options;
     const hasContextChanged = !this.isContextEqual(oldContext, newContext);
 
-    const validatedNewContext = this.validateContext({ ...newContext, application, environment });
     if (hasContextChanged) {
-      await this.fetchAndCacheEvaluation(validatedNewContext);
+      const validatedContext = this.validateContext({ ...newContext, application, environment });
+      await this.fetchAndCacheEvaluation(validatedContext);
     }
+  }
+
+  private isContextEqual(context1: EvaluationContext, context2: EvaluationContext): boolean {
+    if (!context1 || !context2) {
+      return false;
+    }
+    return context1.targetingKey === context2.targetingKey && JSON.stringify(context1) === JSON.stringify(context2);
   }
 
   private getEvaluation<T>({
@@ -167,14 +186,6 @@ export class HyphenProvider implements Provider {
       variant: evaluation.value?.toString(),
       reason: evaluation.reason,
     };
-  }
-
-  private isContextEqual(context1: EvaluationContext, context2: EvaluationContext): boolean {
-    if (!context1 || !context2) {
-      return false;
-    }
-
-    return context1.targetingKey === context2.targetingKey && JSON.stringify(context1) === JSON.stringify(context2);
   }
 
   validateFlagType<T extends string>(type: Evaluation['type'], value: T): string | number | boolean | object {
