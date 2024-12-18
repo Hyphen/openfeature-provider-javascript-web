@@ -70,13 +70,9 @@ export class HyphenProvider implements Provider {
 
   beforeHook = async ({ context }: BeforeHookContext): Promise<EvaluationContext> => {
     const { application, environment } = this.options;
-
-    return {
-      ...context,
-      application,
-      environment,
-      targetingKey: this.getTargetingKey(context as HyphenEvaluationContext),
-    };
+    const evaluationContext = { ...context, application, environment };
+    evaluationContext.targetingKey = this.getTargetingKey(evaluationContext as HyphenEvaluationContext);
+    return evaluationContext;
   };
 
   errorHook = async (hookContext: HookContext, error: unknown): Promise<void> => {
@@ -120,40 +116,38 @@ export class HyphenProvider implements Provider {
     return `${this.options.application}-${this.options.environment}-${Math.random().toString(36).substring(7)}`;
   }
 
-  async initialize(context?: EvaluationContext): Promise<void> {
-    if (context && context.targetingKey) {
-      const validatedContext = this.validateContext(context);
+  private async fetchAndCacheEvaluation(context: HyphenEvaluationContext) {
+    const evaluationResponse = await this.hyphenClient.evaluate(context);
+    const cacheKey = this.generateCacheKey(context);
 
-      if (validatedContext) {
-        const evaluationResponse = await this.hyphenClient.evaluate(validatedContext);
-        const cacheKey = this.generateCacheKey(validatedContext);
-
-        this.cacheClient.set(cacheKey, evaluationResponse.toggles, this.ttlMinutes);
-      }
-    }
+    const toggles = evaluationResponse.toggles;
+    this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
   }
 
   async onContextChange?(oldContext: EvaluationContext, newContext: EvaluationContext): Promise<void> {
+    const { application, environment } = this.options;
     const hasContextChanged = !this.isContextEqual(oldContext, newContext);
 
-    const validatedNewContext = this.validateContext(newContext);
+    const validatedNewContext = this.validateContext({ ...newContext, application, environment });
     if (hasContextChanged) {
-      const evaluationResponse = await this.hyphenClient.evaluate(validatedNewContext);
-      const cacheKey = this.generateCacheKey(validatedNewContext);
-
-      const toggles = evaluationResponse.toggles;
-      this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
+      await this.fetchAndCacheEvaluation(validatedNewContext);
     }
   }
 
   private getEvaluation<T>({
     flagKey,
-    value: defaultValue,
+    defaultValue,
     expectedType,
     context,
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> {
-    const contextKey = this.generateCacheKey(context as HyphenEvaluationContext);
+    const { application, environment } = this.options;
+    const evaluationContext = {
+      ...context,
+      application,
+      environment,
+    };
+    const contextKey = this.generateCacheKey(evaluationContext as HyphenEvaluationContext);
     const cache = this.cacheClient.get(contextKey) || {};
 
     const evaluation = cache?.[flagKey];
@@ -161,12 +155,12 @@ export class HyphenProvider implements Provider {
       flagKey,
       evaluation,
       expectedType,
-      value: defaultValue,
+      defaultValue,
       logger,
     });
     if (evaluationError) return evaluationError;
 
-    const value = this.validateFlagType(expectedType, evaluation.value as string);
+    const value = this.validateFlagType(expectedType, evaluation.value);
 
     return {
       value: value as T,
@@ -212,7 +206,7 @@ export class HyphenProvider implements Provider {
   ): ResolutionDetails<boolean> {
     return this.getEvaluation({
       flagKey,
-      value: defaultValue,
+      defaultValue,
       expectedType: 'boolean',
       context,
       logger,
@@ -227,7 +221,7 @@ export class HyphenProvider implements Provider {
   ): ResolutionDetails<string> {
     return this.getEvaluation({
       flagKey,
-      value: defaultValue,
+      defaultValue,
       expectedType: 'string',
       context,
       logger,
@@ -242,7 +236,7 @@ export class HyphenProvider implements Provider {
   ): ResolutionDetails<number> {
     return this.getEvaluation({
       flagKey,
-      value: defaultValue,
+      defaultValue,
       expectedType: 'number',
       context,
       logger,
@@ -257,7 +251,7 @@ export class HyphenProvider implements Provider {
   ): ResolutionDetails<T> {
     return this.getEvaluation({
       flagKey,
-      value: defaultValue,
+      defaultValue,
       expectedType: 'object',
       context,
       logger,
@@ -266,7 +260,7 @@ export class HyphenProvider implements Provider {
 
   private wrongType<T>({
     flagKey,
-    value,
+    defaultValue,
     evaluation,
     expectedType,
     logger,
@@ -274,7 +268,7 @@ export class HyphenProvider implements Provider {
     logger.debug(`Type mismatch for flag ${flagKey}. Expected ${expectedType}, got ${evaluation!.type}.`);
 
     return {
-      value,
+      value: defaultValue,
       reason: StandardResolutionReasons.ERROR,
       errorCode: ErrorCode.TYPE_MISMATCH,
     };
@@ -284,7 +278,7 @@ export class HyphenProvider implements Provider {
     flagKey,
     evaluation,
     expectedType,
-    value: defaultValue,
+    defaultValue,
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> | undefined {
     if (!evaluation) {
@@ -308,7 +302,7 @@ export class HyphenProvider implements Provider {
     if (evaluation.type !== expectedType) {
       return this.wrongType({
         flagKey,
-        value: defaultValue,
+        defaultValue,
         evaluation,
         expectedType,
         logger,

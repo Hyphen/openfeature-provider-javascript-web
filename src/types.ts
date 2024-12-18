@@ -65,7 +65,7 @@ export interface TelemetryPayload {
 
 export type EvaluationParams<T> = {
   flagKey: string;
-  value: T;
+  defaultValue: T;
   expectedType: Evaluation['type'];
   evaluation?: Evaluation;
   context?: EvaluationContext;
