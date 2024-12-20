@@ -6,17 +6,18 @@ import {
   ErrorCode,
   EvaluationContext,
   type HookContext,
+  Logger,
   TypeMismatchError,
 } from '@openfeature/web-sdk';
 import { type EvaluationParams, type HyphenEvaluationContext, HyphenProvider, TelemetryPayload } from '../src';
 import type { Evaluation, EvaluationResponse } from '../src';
 import lscache from 'lscache';
 
-vi.mock('./hyphenClient');
+vi.mock('../src/hyphenClient');
 vi.mock('../src/config', () => ({
+  horizon: { url: 'https://mock-horizon-url.com' },
   horizonEndpoints: {
-    evaluate: 'https://mock-horizon-url.com',
-    telemetry: 'https://mock-telemetry-url.com',
+    telemetry: 'https://mock-horizon-url.com/telemetry',
   },
 }));
 vi.mock('lscache', () => {
@@ -109,11 +110,7 @@ describe('HyphenProvider', () => {
   describe('Hooks', () => {
     it('should execute beforeHook and modify the context', async () => {
       const mockHookContext: BeforeHookContext = {
-        context: {
-          targetingKey: 'test-key',
-          application: 'test-app',
-          environment: 'test-env',
-        },
+        context: mockContext,
         flagKey: '',
         defaultValue: '',
         flagValueType: 'boolean',
@@ -131,11 +128,11 @@ describe('HyphenProvider', () => {
 
       expect(result.application).toBe(options.application);
       expect(result.environment).toBe(options.environment);
-      expect(result.targetingKey).toBe('test-key');
+      expect(result.targetingKey).toBe(mockContext.targetingKey);
     });
 
     it('should generate a targetingKey if it is missing', async () => {
-      const mockContext: BeforeHookContext = {
+      const mockContextWithoutKey: BeforeHookContext = {
         context: {
           application: 'test-app',
           environment: 'test-env',
@@ -148,14 +145,12 @@ describe('HyphenProvider', () => {
         providerMetadata: { name: 'hyphen' },
       };
 
-      const result = await provider.beforeHook(mockContext);
+      const result = await provider.beforeHook(mockContextWithoutKey);
 
-      expect(result.targetingKey).toBeDefined();
       expect(result.targetingKey).toMatch(/^test-app-test-env-[a-z0-9]{5,}$/);
     });
 
     it('should log errors in errorHook', async () => {
-      const mockLogger = { debug: vi.fn() };
       const hookContext: HookContext = { logger: mockLogger } as any;
 
       await provider.errorHook(hookContext, new Error('Test error'));
@@ -172,8 +167,6 @@ describe('HyphenProvider', () => {
     });
 
     it('should log payload details in afterHook', async () => {
-      const mockLogger = { debug: vi.fn() };
-
       const mockPostTelemetry = vi.spyOn(HyphenClient.prototype, 'postTelemetry').mockResolvedValue(undefined);
 
       const hookContext: HookContext = {
@@ -200,16 +193,22 @@ describe('HyphenProvider', () => {
         },
       };
 
+      provider = new HyphenProvider(publicKey, options);
+
       await provider.afterHook(hookContext, evaluationDetails);
 
       expect(mockPostTelemetry).toHaveBeenCalledWith(expectedPayload, hookContext.logger);
+      expect(mockPostTelemetry).toHaveBeenCalledTimes(1);
     });
 
     it('should log an error and rethrow it if postTelemetry fails', async () => {
-      const mockLogger = { debug: vi.fn() };
-
       const postTelemetryError = new Error('Failed to send telemetry');
-      vi.spyOn(HyphenClient.prototype, 'postTelemetry').mockRejectedValue(postTelemetryError);
+
+      vi.spyOn(provider['hyphenClient'], 'postTelemetry').mockRejectedValue(postTelemetryError);
+
+      const mockLogger: Logger = {
+        debug: vi.fn(),
+      } as any;
 
       const hookContext: HookContext = {
         logger: mockLogger,
@@ -217,11 +216,11 @@ describe('HyphenProvider', () => {
         context: {},
       } as any;
 
-      const evaluationDetails: any = {
+      const evaluationDetails = {
         flagKey: 'test-flag',
         value: true,
         reason: 'mock-reason',
-      };
+      } as any;
 
       await expect(provider.afterHook(hookContext, evaluationDetails)).rejects.toThrow(postTelemetryError);
 
@@ -230,36 +229,80 @@ describe('HyphenProvider', () => {
   });
 
   describe('generateCacheKey', () => {
-    it('should use custom generateCacheKey function if provided', () => {
-      const customGenerateCacheKey = vi.fn(() => 'custom-key');
-      const providerWithCustomKey = new HyphenProvider(publicKey, {
-        ...options,
-        cache: { generateCacheKey: customGenerateCacheKey },
-      });
+    it('should use a custom cache key generator if provided', () => {
+      const customKeyFn = vi.fn(() => 'custom-key');
+      const customProvider = new HyphenProvider(publicKey, { ...options, cache: { generateCacheKey: customKeyFn } });
 
-      const cacheKey = providerWithCustomKey['generateCacheKey'](mockContext as any);
-      expect(customGenerateCacheKey).toHaveBeenCalledWith(mockContext);
+      // @ts-ignore
+      const cacheKey = customProvider['generateCacheKey'](mockContext);
+      expect(customKeyFn).toHaveBeenCalledWith(mockContext);
       expect(cacheKey).toEqual('custom-key');
     });
   });
 
-  describe('initialize with hashed cache key', () => {
-    it('should store evaluation response in cache with hashed key', async () => {
-      const mockEvaluationResponse: EvaluationResponse = {
+  describe('Cache Management', () => {
+    it('should retrieve cached evaluations using hashed key', () => {
+      const mockResponse = { toggles: { 'test-flag': createMockEvaluation('test-flag', true, 'boolean') } };
+      const cacheKey = hash(mockContext);
+
+      lscache.set(cacheKey, mockResponse.toggles, 1);
+
+      const result = provider['getEvaluation']({
+        flagKey: 'test-flag',
+        context: mockContext,
+        defaultValue: false,
+        expectedType: 'boolean',
+        logger: mockLogger,
+      });
+
+      expect(result).toEqual({
+        value: true,
+        variant: 'true',
+        reason: 'EVALUATED',
+      });
+    });
+  });
+
+  describe('fetchAndCacheEvaluation', () => {
+    it('should fetch evaluation and cache the toggles', async () => {
+      const mockCacheClient = lscache;
+      const mockTTLMinutes = 5;
+
+      const mockContext: HyphenEvaluationContext = {
+        targetingKey: 'test-key',
+        application: 'test-app',
+        environment: 'test-env',
+      };
+
+      const mockResponse: EvaluationResponse = {
         toggles: {
-          'flag-key': createMockEvaluation('flag-key', true, 'boolean'),
+          'test-flag': {
+            key: 'test-flag',
+            value: true,
+            type: 'boolean',
+            reason: 'EVALUATED',
+          },
         },
       };
 
-      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
+      const providerWithCustomTTL = new HyphenProvider(publicKey, {
+        horizonUrls: ['https://mock-url.com'],
+        application: 'test-app',
+        environment: 'test-env',
+        cache: { ttlSeconds: mockTTLMinutes * 60 },
+      });
 
-      await provider.initialize(mockContext);
+      const evaluateSpy = vi
+        .spyOn(providerWithCustomTTL['hyphenClient'], 'evaluate')
+        .mockResolvedValue(mockResponse);
 
-      const cacheKey = hash(mockContext);
-      expect(lscache.set).toHaveBeenCalledWith(cacheKey, mockEvaluationResponse.toggles, 1);
+      const expectedCacheKey = hash(mockContext);
 
-      const cachedValue = lscache.get(cacheKey);
-      expect(cachedValue).toEqual(mockEvaluationResponse.toggles);
+      await providerWithCustomTTL['fetchAndCacheEvaluation'](mockContext);
+
+      expect(evaluateSpy).toHaveBeenCalledWith(mockContext);
+
+      expect(mockCacheClient.set).toHaveBeenCalledWith(expectedCacheKey, mockResponse.toggles, mockTTLMinutes);
     });
   });
 
@@ -280,25 +323,6 @@ describe('HyphenProvider', () => {
       expect(() => {
         provider['validateFlagType'](type, invalidValue);
       }).toThrowError(new TypeMismatchError(`Value does not match type ${type}`));
-    });
-  });
-
-  describe('onContextChange with hashed cache key', () => {
-    it('should store new context evaluations in cache with hashed key', async () => {
-      const mockEvaluationResponse: EvaluationResponse = {
-        toggles: {
-          'flag-key': createMockEvaluation('flag-key', false, 'boolean'),
-        },
-      };
-
-      vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
-
-      const newContext = { ...mockContext, targetingKey: 'new-key' };
-      await provider.onContextChange?.(mockContext, newContext);
-
-      const cacheKey = hash(newContext);
-      const cachedValue = lscache.get(cacheKey);
-      expect(cachedValue).toEqual(mockEvaluationResponse.toggles);
     });
   });
 
@@ -525,28 +549,53 @@ describe('HyphenProvider', () => {
     });
   });
 
-  // describe('initialize', () => {
-  //   it('should not call evaluate if targetingKey is missing', async () => {
-  //     const evaluateSpy = vi.spyOn(HyphenClient.prototype, 'evaluate');
-  //     const contextWithoutKey: EvaluationContext = {
-  //       application: mockContext.application,
-  //       environment: mockContext.environment,
-  //     };
-  //
-  //     await provider.initialize(contextWithoutKey);
-  //
-  //     expect(evaluateSpy).not.toHaveBeenCalled();
-  //   });
-  //
-  //   it('should not cache if evaluate fails', async () => {
-  //     const error = new Error('Evaluation failed');
-  //     vi.spyOn(HyphenClient.prototype, 'evaluate').mockRejectedValue(error);
-  //     const setCacheSpy = vi.spyOn(lscache, 'set');
-  //
-  //     await expect(provider.initialize(mockContext)).rejects.toThrow(error);
-  //     expect(setCacheSpy).not.toHaveBeenCalled();
-  //   });
-  // });
+  describe('initialize', () => {
+    it('should validate and fetch evaluation when context with targetingKey is provided', async () => {
+      const mockContext: EvaluationContext = {
+        targetingKey: 'test-key',
+      };
+
+      const validatedContext: any = {
+        ...mockContext,
+        application: options.application,
+        environment: options.environment,
+      };
+
+      const validateContextSpy = vi.spyOn(provider as any, 'validateContext').mockReturnValue(validatedContext);
+      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation').mockResolvedValue(undefined);
+
+      await provider.initialize(mockContext);
+
+      expect(validateContextSpy).toHaveBeenCalledWith(validatedContext);
+
+      expect(fetchAndCacheSpy).toHaveBeenCalledWith(validatedContext);
+    });
+
+    it('should do nothing if context is not provided', async () => {
+      const validateContextSpy = vi.spyOn(provider as any, 'validateContext');
+      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation');
+
+      await provider.initialize(undefined);
+
+      expect(validateContextSpy).not.toHaveBeenCalled();
+      expect(fetchAndCacheSpy).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing if context does not have a targetingKey', async () => {
+      const invalidContext: EvaluationContext = {
+        application: 'test-app',
+        environment: 'test-env',
+      };
+
+      const validateContextSpy = vi.spyOn(provider as any, 'validateContext');
+      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation');
+
+      await provider.initialize(invalidContext);
+
+      expect(validateContextSpy).not.toHaveBeenCalled();
+      expect(fetchAndCacheSpy).not.toHaveBeenCalled();
+    });
+  });
 
   describe('onContextChange', () => {
     it('should not call evaluate if targetingKey is missing in new context', async () => {
@@ -567,6 +616,30 @@ describe('HyphenProvider', () => {
 
       expect(validateContextSpy).toHaveBeenCalledWith(newContextWithoutKey);
       expect(evaluateSpy).not.toHaveBeenCalled();
+    });
+
+    it('should validate and fetch evaluation if context has changed', async () => {
+      const oldContext: EvaluationContext = { targetingKey: 'old-key' };
+      const newContext: EvaluationContext = { targetingKey: 'new-key' };
+
+      const validatedContext: EvaluationContext = {
+        ...newContext,
+        application: options.application,
+        environment: options.environment,
+      };
+
+      const isContextEqualSpy = vi.spyOn(provider as any, 'isContextEqual').mockReturnValue(false);
+
+      const validateContextSpy = vi.spyOn(provider as any, 'validateContext').mockReturnValue(validatedContext);
+      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation').mockResolvedValue(undefined);
+
+      await provider.onContextChange?.(oldContext, newContext);
+
+      expect(isContextEqualSpy).toHaveBeenCalledWith(oldContext, newContext);
+
+      expect(validateContextSpy).toHaveBeenCalledWith(validatedContext);
+
+      expect(fetchAndCacheSpy).toHaveBeenCalledWith(validatedContext);
     });
   });
 

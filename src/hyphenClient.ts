@@ -1,5 +1,5 @@
 import { EvaluationResponse, HyphenEvaluationContext, TelemetryPayload } from './types';
-import { horizonEndpoints } from './config';
+import { horizon, horizonEndpoints } from './config';
 import { Logger } from '@openfeature/web-sdk';
 
 export class HyphenClient {
@@ -8,7 +8,7 @@ export class HyphenClient {
 
   constructor(publicKey: string, horizonUrls: string[] = []) {
     this.publicKey = publicKey;
-    this.horizonUrls = [...horizonUrls, horizonEndpoints.evaluate];
+    this.horizonUrls = [...horizonUrls, horizon.url];
   }
 
   async evaluate(context: HyphenEvaluationContext, logger?: Logger): Promise<EvaluationResponse> {
@@ -28,7 +28,7 @@ export class HyphenClient {
 
     for (const url of urls) {
       try {
-        const response = await this.httpPost(url, context, logger);
+        const response = await this.httpPost(`${url}/evaluate`, context, logger);
         return await response.json();
       } catch (error) {
         lastError = error;

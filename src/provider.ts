@@ -149,7 +149,7 @@ export class HyphenProvider implements Provider {
     if (!context1 || !context2) {
       return false;
     }
-    return context1.targetingKey === context2.targetingKey && JSON.stringify(context1) === JSON.stringify(context2);
+    return context1.targetingKey === context2.targetingKey && hash(context1) === hash(context2);
   }
 
   private getEvaluation<T>({
