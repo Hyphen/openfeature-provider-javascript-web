@@ -1,32 +1,16 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { horizon, horizonEndpoints } from '../src/config';
 
 describe('horizon configuration', () => {
-  const originalNodeEnv = process.env.NODE_ENV;
-
-  afterEach(() => {
-    process.env.NODE_ENV = originalNodeEnv;
-    vi.resetModules();
-  });
-
-  it('should use production URL when NODE_ENV is production', async () => {
-    process.env.NODE_ENV = 'production';
-    const { horizon } = await import('../src/config');
-
+  it('should have the correct base URL', () => {
     expect(horizon.url).toBe('https://horizon.hyphen.ai/toggle');
   });
 
-  it('should use development URL when NODE_ENV is not production', async () => {
-    process.env.NODE_ENV = 'development';
-    const { horizon } = await import('../src/config');
-
-    expect(horizon.url).toBe('https://dev-horizon.hyphen.ai/toggle');
+  it('should correctly configure the evaluate endpoint', () => {
+    expect(horizonEndpoints.evaluate).toBe('https://horizon.hyphen.ai/toggle/evaluate');
   });
 
-  it('should use development URL when NODE_ENV is undefined', async () => {
-    // Type-safe way to set NODE_ENV to undefined
-    process.env.NODE_ENV = undefined as unknown as string;
-    const { horizon } = await import('../src/config');
-
-    expect(horizon.url).toBe('https://dev-horizon.hyphen.ai/toggle');
+  it('should correctly configure the telemetry endpoint', () => {
+    expect(horizonEndpoints.telemetry).toBe('https://horizon.hyphen.ai/toggle/telemetry');
   });
 });

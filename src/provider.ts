@@ -50,7 +50,7 @@ export class HyphenProvider implements Provider {
       throw new Error('Environment is required');
     }
 
-    this.hyphenClient = new HyphenClient(publicKey, options.horizonServerUrls);
+    this.hyphenClient = new HyphenClient(publicKey, options.horizonUrls);
     this.options = options;
     this.events = new OpenFeatureEventEmitter();
     this.ttlMinutes = options.cache?.ttlSeconds ? options.cache.ttlSeconds / 60 : this.ttlMinutes;
@@ -102,7 +102,6 @@ export class HyphenProvider implements Provider {
       };
 
       await this.hyphenClient.postTelemetry(payload, hookContext.logger);
-      hookContext.logger.debug('Payload sent to postTelemetry:', JSON.stringify(payload));
     } catch (error) {
       hookContext.logger.debug('Unable to log usage.', error);
       throw error;
@@ -193,7 +192,7 @@ export class HyphenProvider implements Provider {
       case 'number': {
         const parsedValue = parseFloat(value);
         if (isNaN(parsedValue)) {
-          throw new TypeMismatchError(`default value does not match type ${type}`);
+          throw new TypeMismatchError(`Value does not match type ${type}`);
         }
         return parsedValue;
       }
@@ -201,7 +200,7 @@ export class HyphenProvider implements Provider {
         try {
           return JSON.parse(value);
         } catch {
-          throw new TypeMismatchError(`default value does not match type ${type}`);
+          throw new TypeMismatchError(`Value does not match type ${type}`);
         }
       }
       default:

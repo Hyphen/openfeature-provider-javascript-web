@@ -6,7 +6,7 @@ export type HyphenProviderOptions = {
   /** The environment for the Hyphen project (e.g., `production`, `staging`). */
   environment: string;
   /** The Hyphen server URL */
-  horizonServerUrls?: string[];
+  horizonUrls?: string[];
   /** Flag to enable toggle usage */
   enableToggleUsage?: boolean;
   /** The cache options for the provider */

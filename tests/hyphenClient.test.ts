@@ -107,7 +107,7 @@ describe('HyphenClient', () => {
     const customUrl = 'https://custom-url.com';
     const client = new HyphenClient(publicKey, [customUrl]);
 
-    expect(client['horizonServerUrls']).toEqual([customUrl, 'https://mock-horizon-url.com']);
+    expect(client['horizonUrls']).toEqual([customUrl, 'https://mock-horizon-url.com']);
   });
 
   it('should successfully send telemetry data', async () => {

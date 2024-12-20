@@ -8,7 +8,7 @@ import {
   type HookContext,
   TypeMismatchError,
 } from '@openfeature/web-sdk';
-import { type EvaluationParams, type HyphenEvaluationContext, HyphenProvider } from '../src';
+import { type EvaluationParams, type HyphenEvaluationContext, HyphenProvider, TelemetryPayload } from '../src';
 import type { Evaluation, EvaluationResponse } from '../src';
 import lscache from 'lscache';
 
@@ -58,7 +58,7 @@ const createMockEvaluation = (
 describe('HyphenProvider', () => {
   const publicKey = 'test-public-key';
   const options = {
-    horizonServerUrls: ['https://test-server.com'],
+    horizonUrls: ['https://test-server.com'],
     application: 'test-app',
     environment: 'test-env',
   };
@@ -174,7 +174,7 @@ describe('HyphenProvider', () => {
     it('should log payload details in afterHook', async () => {
       const mockLogger = { debug: vi.fn() };
 
-      vi.spyOn(HyphenClient.prototype, 'postTelemetry').mockResolvedValue(undefined);
+      const mockPostTelemetry = vi.spyOn(HyphenClient.prototype, 'postTelemetry').mockResolvedValue(undefined);
 
       const hookContext: HookContext = {
         logger: mockLogger,
@@ -188,22 +188,21 @@ describe('HyphenProvider', () => {
         reason: 'mock-reason',
       };
 
+      const expectedPayload: TelemetryPayload = {
+        context: hookContext.context as HyphenEvaluationContext,
+        data: {
+          toggle: {
+            key: evaluationDetails.flagKey,
+            value: evaluationDetails.value,
+            type: hookContext.flagValueType,
+            reason: evaluationDetails.reason,
+          },
+        },
+      };
+
       await provider.afterHook(hookContext, evaluationDetails);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Payload sent to postTelemetry:',
-        JSON.stringify({
-          context: hookContext.context,
-          data: {
-            toggle: {
-              key: evaluationDetails.flagKey,
-              value: evaluationDetails.value,
-              type: hookContext.flagValueType,
-              reason: evaluationDetails.reason,
-            },
-          },
-        }),
-      );
+      expect(mockPostTelemetry).toHaveBeenCalledWith(expectedPayload, hookContext.logger);
     });
 
     it('should log an error and rethrow it if postTelemetry fails', async () => {
@@ -271,7 +270,7 @@ describe('HyphenProvider', () => {
 
       expect(() => {
         provider['validateFlagType'](type, invalidValue);
-      }).toThrowError(new TypeMismatchError(`default value does not match type ${type}`));
+      }).toThrowError(new TypeMismatchError(`Value does not match type ${type}`));
     });
 
     it('should throw a TypeMismatchError when the value cannot be parsed as an object', () => {
@@ -280,7 +279,7 @@ describe('HyphenProvider', () => {
 
       expect(() => {
         provider['validateFlagType'](type, invalidValue);
-      }).toThrowError(new TypeMismatchError(`default value does not match type ${type}`));
+      }).toThrowError(new TypeMismatchError(`Value does not match type ${type}`));
     });
   });
 

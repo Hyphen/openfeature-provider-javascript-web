@@ -1,5 +1,5 @@
 export const horizon = {
-  url: `https://${process.env.NODE_ENV === 'production' ? 'horizon' : 'dev-horizon'}.hyphen.ai/toggle`,
+  url: 'https://horizon.hyphen.ai/toggle',
 };
 
 export const horizonEndpoints = {

@@ -4,15 +4,15 @@ import { Logger } from '@openfeature/web-sdk';
 
 export class HyphenClient {
   private readonly publicKey: string;
-  private readonly horizonServerUrls: string[];
+  private readonly horizonUrls: string[];
 
-  constructor(publicKey: string, horizonServerUrls: string[] = []) {
+  constructor(publicKey: string, horizonUrls: string[] = []) {
     this.publicKey = publicKey;
-    this.horizonServerUrls = [...horizonServerUrls, horizonEndpoints.evaluate];
+    this.horizonUrls = [...horizonUrls, horizonEndpoints.evaluate];
   }
 
   async evaluate(context: HyphenEvaluationContext, logger?: Logger): Promise<EvaluationResponse> {
-    return await this.fetchEvaluationResponse(this.horizonServerUrls, context, logger);
+    return await this.fetchEvaluationResponse(this.horizonUrls, context, logger);
   }
 
   async postTelemetry(payload: TelemetryPayload, logger?: Logger) {
@@ -20,19 +20,18 @@ export class HyphenClient {
   }
 
   private async fetchEvaluationResponse(
-    serverUrls: string[],
+    urls: string[],
     context: HyphenEvaluationContext,
     logger?: Logger,
   ): Promise<EvaluationResponse> {
     let lastError: unknown;
 
-    for (const url of serverUrls) {
+    for (const url of urls) {
       try {
         const response = await this.httpPost(url, context, logger);
         return await response.json();
       } catch (error) {
         lastError = error;
-        logger?.debug('Failed to fetch evaluation: ', url, error);
       }
     }
 
@@ -60,6 +59,7 @@ export class HyphenClient {
       }
     } catch (error) {
       lastError = error;
+      logger?.debug('Failed to fetch', url, error);
     }
 
     throw lastError;
