@@ -100,9 +100,9 @@ export default App
 
 ### Options
 
-| Option          | Type   | Description                                                                         |
-|------------------|--------|-------------------------------------------------------------------------------------|
-| `application`    | string | The application id or alteernate id.                                                |
+| Option          | Type   | Description                                                                        |
+|------------------|--------|------------------------------------------------------------------------------------|
+| `application`    | string | The application id or alternate id.                                                |
 | `environment`    | string | The environment in which your application is running (e.g., `production`, `staging`). |
 | `enableToggleUsage` | boolean | Enable or disable the logging of toggle usage (telemetry).                         |
 
