@@ -30,6 +30,10 @@
   },
   "homepage": "https://github.com/Hyphen/openfeature-provider-javascript-web#readme",
   "dependencies": {
+    "lscache": "^1.3.2",
+    "object-hash": "^3.0.0"
+  },
+  "peerDependencies": {
     "@openfeature/web-sdk": "^1.3.2"
   },
   "devDependencies": {
@@ -41,6 +45,8 @@
     "@semantic-release/github": "^11.0.1",
     "@semantic-release/release-notes-generator": "^14.0.1",
     "@types/eslint-config-prettier": "^6.11.3",
+    "@types/lscache": "^1.3.4",
+    "@types/object-hash": "^3.0.6",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
     "@vitest/coverage-istanbul": "^2.1.8",
