@@ -73,7 +73,7 @@ function App() {
         await OpenFeature.setContext(context);
 
         const client = OpenFeature.getClient();
-        const data = client.getNumberDetails('my-number-toggle', 0);
+        const data = client.getNumberDetails('your-flag-key', 0);
         setFeatureFlagValue(data.value);
       
       } catch (error) {
@@ -100,10 +100,11 @@ export default App
 
 ### Options
 
-| Option          | Type   | Description                                                                           |
-|------------------|--------|---------------------------------------------------------------------------------------|
-| `application`    | string | The application id or alteernate id.                                                  |
+| Option          | Type   | Description                                                                         |
+|------------------|--------|-------------------------------------------------------------------------------------|
+| `application`    | string | The application id or alteernate id.                                                |
 | `environment`    | string | The environment in which your application is running (e.g., `production`, `staging`). |
+| `enableToggleUsage` | boolean | Enable or disable the logging of toggle usage (telemetry).                         |
 
 ### Context
 
