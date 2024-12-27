@@ -3,7 +3,7 @@ import { horizon, horizonEndpoints } from '../src/config';
 
 describe('horizon configuration', () => {
   it('should have the correct base URL', () => {
-    expect(horizon.url).toBe('https://horizon.hyphen.ai/toggle');
+    expect(horizon.url).toBe('https://horizon.hyphen.ai');
   });
 
   it('should correctly configure the evaluate endpoint', () => {

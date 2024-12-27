@@ -57,10 +57,10 @@ describe('HyphenClient', () => {
 
     const result = await client.evaluate(mockContext);
     expect(result).toEqual(mockResponse);
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/evaluate', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
-  it('should append /evaluate to the horizon URLs dynamically', async () => {
+  it('should append /toggle/evaluate to the horizon URLs dynamically', async () => {
     const client = new HyphenClient(publicKey, [customUrl]);
 
     vi.mocked(fetch).mockResolvedValueOnce({
@@ -71,7 +71,7 @@ describe('HyphenClient', () => {
     const result = await client.evaluate(mockContext);
 
     expect(result).toEqual(mockResponse);
-    expect(fetch).toHaveBeenCalledWith(`${customUrl}/evaluate`, {
+    expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/evaluate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -79,7 +79,7 @@ describe('HyphenClient', () => {
       },
       body: JSON.stringify(mockContext),
     });
-    expect(fetch).not.toHaveBeenCalledWith('https://mock-horizon-url.com/evaluate', expect.any(Object));
+    expect(fetch).not.toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
   it('should try the next server URL if the first fails', async () => {
@@ -95,8 +95,8 @@ describe('HyphenClient', () => {
     const result = await client.evaluate(mockContext);
 
     expect(result).toEqual(mockResponse);
-    expect(fetch).toHaveBeenCalledWith(`${customUrl}/evaluate`, expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/evaluate', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/evaluate`, expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
   it('should throw an error if all servers fail', async () => {
@@ -105,7 +105,7 @@ describe('HyphenClient', () => {
     vi.mocked(fetch).mockRejectedValue(new Error('Failed'));
 
     await expect(client.evaluate(mockContext)).rejects.toThrowError(new Error('Failed'));
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/evaluate', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
   it('should successfully send telemetry data', async () => {
