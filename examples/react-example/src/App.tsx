@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { OpenFeature } from "@openfeature/web-sdk";
+import { useEffect, useState } from 'react';
+import { OpenFeature } from '@openfeature/web-sdk';
 import { HyphenEvaluationContext, HyphenProviderOptions, HyphenProvider } from '@hyphen/openfeature-web-provider';
 
 function App() {
-  const [featureFlagValue, setFeatureFlagValue] = useState<number>(0);
+  const [featureFlagValue, setFeatureFlagValue] = useState<string>('');
 
   const publicKey = 'your-public-key';
 
@@ -36,7 +36,7 @@ function App() {
         await OpenFeature.setContext(context);
 
         const client = OpenFeature.getClient();
-        const data = client.getNumberDetails('my-number-toggle', 0);
+        const data = client.getStringDetails('your-flag-key', 'default-value');
         setFeatureFlagValue(data.value);
       } catch (error) {
         console.error('Error setting up OpenFeature:', error);
@@ -46,13 +46,12 @@ function App() {
     setupOpenFeature();
   }, []);
 
-
   return (
     <>
       <h1>OpenFeature Example</h1>
       <p>Feature flag value: {featureFlagValue}</p>
     </>
-  )
+  );
 }
 
-export default App
+export default App;
