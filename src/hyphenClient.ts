@@ -8,7 +8,7 @@ export class HyphenClient {
 
   constructor(publicKey: string, horizonUrls: string[] = []) {
     this.publicKey = publicKey;
-    this.horizonUrls = [...horizonUrls, horizon.url];
+    this.horizonUrls = [...(horizonUrls || []), horizon.url];
   }
 
   async evaluate(context: HyphenEvaluationContext, logger?: Logger): Promise<EvaluationResponse> {
@@ -28,7 +28,7 @@ export class HyphenClient {
 
     for (const url of urls) {
       try {
-        const response = await this.httpPost(`${url}/evaluate`, context, logger);
+        const response = await this.httpPost(`${url}/toggle/evaluate`, context, logger);
         return await response.json();
       } catch (error) {
         lastError = error;

@@ -1,8 +1,8 @@
 export const horizon = {
-  url: 'https://horizon.hyphen.ai/toggle',
+  url: 'https://horizon.hyphen.ai',
 };
 
 export const horizonEndpoints = {
-  evaluate: `${horizon.url}/evaluate`,
-  telemetry: `${horizon.url}/telemetry`,
+  evaluate: `${horizon.url}/toggle/evaluate`,
+  telemetry: `${horizon.url}/toggle/telemetry`,
 };
