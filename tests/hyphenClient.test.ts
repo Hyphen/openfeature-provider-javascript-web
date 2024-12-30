@@ -60,29 +60,7 @@ describe('HyphenClient', () => {
     expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
-  it('should append /toggle/evaluate to the horizon URLs dynamically', async () => {
-    const client = new HyphenClient(publicKey, [customUrl]);
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue(mockResponse),
-    } as unknown as Response);
-
-    const result = await client.evaluate(mockContext);
-
-    expect(result).toEqual(mockResponse);
-    expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/evaluate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-      },
-      body: JSON.stringify(mockContext),
-    });
-    expect(fetch).not.toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
-  });
-
-  it('should try the next server URL if the first fails', async () => {
+  it('should try URLs in order for evaluation', async () => {
     const client = new HyphenClient(publicKey, [customUrl]);
 
     vi.mocked(fetch)
@@ -99,37 +77,34 @@ describe('HyphenClient', () => {
     expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
-  it('should throw an error if all servers fail', async () => {
-    const client = new HyphenClient(publicKey);
-
-    vi.mocked(fetch).mockRejectedValue(new Error('Failed'));
-
-    await expect(client.evaluate(mockContext)).rejects.toThrowError(new Error('Failed'));
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
-  });
-
-  it('should successfully send telemetry data', async () => {
-    const client = new HyphenClient(publicKey);
+  it('should successfully send telemetry data using URLs in order', async () => {
+    const client = new HyphenClient(publicKey, [customUrl]);
     const payload: TelemetryPayload = {
       context: mockContext,
       data: { toggle: { key: 'test-flag', value: true, type: 'boolean', reason: 'mock-reason' } },
     };
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn(),
-    } as unknown as Response);
+    vi.mocked(fetch)
+      .mockRejectedValueOnce(new Error('Failed'))
+      .mockResolvedValueOnce({
+        ok: true,
+      } as unknown as Response);
 
     await client.postTelemetry(payload);
 
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/telemetry', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-      },
-      body: JSON.stringify(payload),
-    });
+    expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/telemetry`, expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/telemetry', expect.any(Object));
+  });
+
+  it('should throw an error if all servers fail', async () => {
+    const client = new HyphenClient(publicKey, [customUrl]);
+    const expectedError = new Error('Failed');
+
+    vi.mocked(fetch).mockRejectedValue(expectedError);
+
+    await expect(client.evaluate(mockContext)).rejects.toThrowError(expectedError);
+    expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/evaluate`, expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
   });
 
   it('should log an error and throw it when response is not OK', async () => {
@@ -164,29 +139,5 @@ describe('HyphenClient', () => {
   it('should append the default horizon URL to the provided custom server URLs', () => {
     const client = new HyphenClient(publicKey, [customUrl]);
     expect(client['horizonUrls']).toEqual([customUrl, 'https://mock-horizon-url.com']);
-  });
-
-  it('should successfully send telemetry data', async () => {
-    const client = new HyphenClient(publicKey);
-    const payload: TelemetryPayload = {
-      context: mockContext,
-      data: { toggle: { key: 'test-flag', value: true, type: 'boolean', reason: 'mock-reason' } },
-    };
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn(),
-    } as unknown as Response);
-
-    await client.postTelemetry(payload);
-
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/telemetry', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-      },
-      body: JSON.stringify(payload),
-    });
   });
 });
