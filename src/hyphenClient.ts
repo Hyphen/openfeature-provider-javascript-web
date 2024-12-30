@@ -1,5 +1,5 @@
 import { EvaluationResponse, HyphenEvaluationContext, TelemetryPayload } from './types';
-import { horizon, horizonEndpoints } from './config';
+import { horizon } from './config';
 import { Logger } from '@openfeature/web-sdk';
 
 export class HyphenClient {
@@ -12,24 +12,25 @@ export class HyphenClient {
   }
 
   async evaluate(context: HyphenEvaluationContext, logger?: Logger): Promise<EvaluationResponse> {
-    return await this.fetchEvaluationResponse(this.horizonUrls, context, logger);
+    const response = await this.tryUrlsRequest('/toggle/evaluate', context, logger);
+    return await response.json();
   }
 
   async postTelemetry(payload: TelemetryPayload, logger?: Logger) {
-    await this.httpPost(horizonEndpoints.telemetry, payload, logger);
+    await this.tryUrlsRequest('/toggle/telemetry', payload, logger);
   }
 
-  private async fetchEvaluationResponse(
-    urls: string[],
-    context: HyphenEvaluationContext,
-    logger?: Logger,
-  ): Promise<EvaluationResponse> {
+  private async tryUrlsRequest<T>(
+    path: string,
+    payload: T,
+    logger?: Logger
+  ): Promise<Response> {
     let lastError: unknown;
 
-    for (const url of urls) {
+    for (const baseUrl of this.horizonUrls) {
       try {
-        const response = await this.httpPost(`${url}/toggle/evaluate`, context, logger);
-        return await response.json();
+        const response = await this.httpPost(`${baseUrl}${path}`, payload, logger);
+        return response;
       } catch (error) {
         lastError = error;
       }
