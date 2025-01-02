@@ -1,57 +1,31 @@
-import { useEffect, useState } from 'react';
+import { HyphenEvaluationContext, HyphenProvider, HyphenProviderOptions } from '@hyphen/openfeature-web-provider';
 import { OpenFeature } from '@openfeature/web-sdk';
-import { HyphenEvaluationContext, HyphenProviderOptions, HyphenProvider } from '@hyphen/openfeature-web-provider';
+import Page from './Page.tsx';
+
+const publicKey = 'your-public-key';
+
+const options: HyphenProviderOptions = {
+  application: 'app',
+  environment: 'production',
+};
+
+const context: HyphenEvaluationContext = {
+  targetingKey: 'target-key',
+  user: {
+    id: 'user-123',
+    email: 'user@example.com',
+    name: 'John Doe',
+    customAttributes: {
+      role: 'admin',
+    },
+  },
+};
+
+OpenFeature.setProvider(new HyphenProvider(publicKey, options));
+OpenFeature.setContext(context);
 
 function App() {
-  const [featureFlagValue, setFeatureFlagValue] = useState<string>('');
-
-  const publicKey = 'your-public-key';
-
-  const options: HyphenProviderOptions = {
-    application: 'app',
-    environment: 'production',
-  };
-
-  const context: HyphenEvaluationContext = {
-    targetingKey: 'target-key',
-    ipAddress: '203.0.113.42',
-    customAttributes: {
-      subscriptionLevel: 'premium',
-      region: 'us-east',
-    },
-    user: {
-      id: 'user-123',
-      email: 'user@example.com',
-      name: 'John Doe',
-      customAttributes: {
-        role: 'admin',
-      },
-    },
-  };
-
-  useEffect(() => {
-    const setupOpenFeature = async () => {
-      try {
-        await OpenFeature.setProviderAndWait(new HyphenProvider(publicKey, options));
-        await OpenFeature.setContext(context);
-
-        const client = OpenFeature.getClient();
-        const data = client.getStringDetails('your-flag-key', 'default-value');
-        setFeatureFlagValue(data.value);
-      } catch (error) {
-        console.error('Error setting up OpenFeature:', error);
-      }
-    };
-
-    setupOpenFeature();
-  }, []);
-
-  return (
-    <>
-      <h1>OpenFeature Example</h1>
-      <p>Feature flag value: {featureFlagValue}</p>
-    </>
-  );
+  return <Page />;
 }
 
 export default App;
