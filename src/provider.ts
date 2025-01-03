@@ -88,6 +88,7 @@ export class HyphenProvider implements Provider {
   };
 
   afterHook = async (hookContext: HookContext, evaluationDetails: EvaluationDetails<FlagValue>): Promise<void> => {
+    console.log('afterHook', hookContext, evaluationDetails);
     const parsedEvaluationDetails = {
       key: evaluationDetails.flagKey,
       value: evaluationDetails.value,
@@ -121,6 +122,7 @@ export class HyphenProvider implements Provider {
 
   private async fetchAndCacheEvaluation(context: HyphenEvaluationContext) {
     const evaluationResponse = await this.hyphenClient.evaluate(context);
+    console.log('evaluationResponse', evaluationResponse);
     const cacheKey = this.generateCacheKey(context);
 
     const toggles = evaluationResponse.toggles;
@@ -136,6 +138,7 @@ export class HyphenProvider implements Provider {
   }
 
   async onContextChange?(oldContext: EvaluationContext, newContext: EvaluationContext): Promise<void> {
+    console.log('onContextChange', oldContext, newContext);
     const { application, environment } = this.options;
     const hasContextChanged = !this.isContextEqual(oldContext, newContext);
 
@@ -169,6 +172,7 @@ export class HyphenProvider implements Provider {
     const cache = this.cacheClient.get(contextKey) || {};
 
     const evaluation = cache?.[flagKey];
+    console.log('evaluation', evaluation);
     const evaluationError = this.getEvaluationParseError({
       flagKey,
       evaluation,
