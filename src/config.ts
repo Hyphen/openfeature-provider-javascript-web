@@ -1,5 +1,5 @@
 export const horizon = {
-  url: 'https://dev-horizon.hyphen.ai',
+  url: 'https://horizon.hyphen.ai',
 };
 
 export const horizonEndpoints = {
