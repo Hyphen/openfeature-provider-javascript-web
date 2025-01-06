@@ -5,15 +5,6 @@ import { Logger } from '@openfeature/web-sdk';
 
 vi.stubGlobal('fetch', vi.fn());
 
-vi.mock('../src/config', () => ({
-  horizon: {
-    url: 'https://mock-horizon-url.com',
-  },
-  horizonEndpoints: {
-    telemetry: 'https://mock-horizon-url.com/telemetry',
-  },
-}));
-
 describe('HyphenClient', () => {
   const publicKey = 'test-public-key';
   const customUrl = 'https://custom-url.com';
@@ -57,7 +48,7 @@ describe('HyphenClient', () => {
 
     const result = await client.evaluate(mockContext);
     expect(result).toEqual(mockResponse);
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://toggle.hyphen.cloud/toggle/evaluate', expect.any(Object));
   });
 
   it('should try URLs in order for evaluation', async () => {
@@ -74,7 +65,7 @@ describe('HyphenClient', () => {
 
     expect(result).toEqual(mockResponse);
     expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/evaluate`, expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://toggle.hyphen.cloud/toggle/evaluate', expect.any(Object));
   });
 
   it('should successfully send telemetry data using URLs in order', async () => {
@@ -93,7 +84,7 @@ describe('HyphenClient', () => {
     await client.postTelemetry(payload);
 
     expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/telemetry`, expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/telemetry', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://toggle.hyphen.cloud/toggle/telemetry', expect.any(Object));
   });
 
   it('should throw an error if all servers fail', async () => {
@@ -104,7 +95,7 @@ describe('HyphenClient', () => {
 
     await expect(client.evaluate(mockContext)).rejects.toThrowError(expectedError);
     expect(fetch).toHaveBeenCalledWith(`${customUrl}/toggle/evaluate`, expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith('https://mock-horizon-url.com/toggle/evaluate', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://toggle.hyphen.cloud/toggle/evaluate', expect.any(Object));
   });
 
   it('should log an error and throw it when response is not OK', async () => {
@@ -138,6 +129,6 @@ describe('HyphenClient', () => {
 
   it('should append the default horizon URL to the provided custom server URLs', () => {
     const client = new HyphenClient(publicKey, [customUrl]);
-    expect(client['horizonUrls']).toEqual([customUrl, 'https://mock-horizon-url.com']);
+    expect(client['horizonUrls']).toEqual([customUrl, 'https://toggle.hyphen.cloud']);
   });
 });
