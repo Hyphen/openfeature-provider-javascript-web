@@ -20,17 +20,18 @@ export class HyphenClient {
     await this.tryUrlsRequest('/toggle/telemetry', payload, logger);
   }
 
-  private async tryUrlsRequest<T>(
-    path: string,
-    payload: T,
-    logger?: Logger
-  ): Promise<Response> {
+  private async tryUrlsRequest<T>(path: string, payload: T, logger?: Logger): Promise<Response> {
     let lastError: unknown;
 
-    for (const baseUrl of this.horizonUrls) {
+    for (let url of this.horizonUrls) {
       try {
-        const response = await this.httpPost(`${baseUrl}${path}`, payload, logger);
-        return response;
+        const baseUrl = new URL(url);
+        const basePath = baseUrl.pathname.replace(/\/$/, '');
+        path = path.replace(/^\//, '');
+        baseUrl.pathname = basePath ? `${basePath}/${path}` : path;
+        url = baseUrl.toString();
+
+        return await this.httpPost(url, payload, logger);
       } catch (error) {
         lastError = error;
       }
