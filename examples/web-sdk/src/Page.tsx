@@ -1,11 +1,11 @@
 import { useAuth } from './MockAuthProvider.tsx';
-import { OpenFeature } from '@openfeature/web-sdk';
+import { useOpenFeature } from './OpenFeatureProvider.tsx';
 
 function Page() {
   const { isLoading, user } = useAuth();
 
-  const client = OpenFeature.getClient();
-  const isBetaEnabled = client.getStringValue('beta', 'default value');
+  const { client } = useOpenFeature();
+  const isBetaEnabled = client.getBooleanValue('your-flag-key', false);
 
   if (isLoading) {
     return <div>Loading...</div>;

@@ -50,35 +50,13 @@ To integrate the Hyphen Toggle provider into your application, follow these step
    ```
 
 2. **Set Up the context**: Use ``OpenFeature.setContext`` to configure the context needed for feature targeting. This context should include relevant user information, typically obtained from an authentication process.
-   ```typescript jsx
-   const AuthContext = createContext({ isLoading: true, user: null });
+   ```typescript jsx 
+    OpenFeature.setContext({
+      targetingKey: user.id,
+      user: user,
+      customAttributes: { role: user.role }, // Additional targeting attributes
+    });
 
-   export const MockAuthProvider = ({ children }: { children: React.ReactNode }) => {
-      const [authState, setAuthState] = useState({ isLoading: true, user: null });
-   
-      useEffect(() => {
-        setTimeout(() => {
-          const user = {
-            id: 'user-123',
-            name: 'John Doe',
-            email: 'user@example.com',
-            role: 'admin',
-          };
-          
-          OpenFeature.setContext({
-            targetingKey: user.id,
-            user: user,
-            customAttributes: { role: user.role }, // Additional targeting attributes
-          });
-   
-         setAuthState({ isLoading: false, user });
-          }, 1000);
-      }, []);
-   
-      return <AuthContext.Provider value={authState}>{children}</AuthContext.Provider>;
-      };
-   
-      export const useAuth = () => useContext(AuthContext);
    ```
    
    
