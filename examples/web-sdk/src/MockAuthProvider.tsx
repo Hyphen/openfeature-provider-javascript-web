@@ -1,6 +1,6 @@
-import React from "react";
-import useTimeout from "./useTimeout";
-import { OpenFeature } from "@openfeature/web-sdk";
+import React from 'react';
+import useTimeout from './useTimeout';
+import { OpenFeature } from '@openfeature/web-sdk';
 
 interface IAuthContext {
   isLoading: boolean;
@@ -24,11 +24,11 @@ export const MockAuthProvider = ({ children }) => {
   useTimeout(() => {
     const user = {
       id: 'user-123',
-      name: "John Doe",
+      name: 'John Doe',
       email: 'user@example.com',
       customAttributes: {
-        role: "admin",
-      }
+        role: 'admin',
+      },
     };
 
     setValue({
@@ -37,16 +37,14 @@ export const MockAuthProvider = ({ children }) => {
     });
 
     OpenFeature.setContext({
-      targetingKey: 'target-key',
+      targetingKey: user.id,
       customAttributes: {},
-      user: user
-    })
-
+      user: user,
+    });
   }, 1000);
 
-
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
+};
 
 export const useAuth = () => {
   return React.useContext(AuthContext);
