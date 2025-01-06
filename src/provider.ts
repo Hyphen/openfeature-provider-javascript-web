@@ -88,6 +88,8 @@ export class HyphenProvider implements Provider {
   };
 
   afterHook = async (hookContext: HookContext, evaluationDetails: EvaluationDetails<FlagValue>): Promise<void> => {
+    const { application, environment } = this.options;
+
     const parsedEvaluationDetails = {
       key: evaluationDetails.flagKey,
       value: evaluationDetails.value,
@@ -97,7 +99,7 @@ export class HyphenProvider implements Provider {
 
     try {
       const payload: TelemetryPayload = {
-        context: hookContext.context as HyphenEvaluationContext,
+        context: { ...hookContext.context, application, environment } as HyphenEvaluationContext,
         data: { toggle: parsedEvaluationDetails },
       };
 

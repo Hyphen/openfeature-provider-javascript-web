@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/Hyphen/openfeature-provider-javascript-web/compare/v1.0.2...v1.0.3) (2025-01-06)
+
+
+### Bug Fixes
+
+* deploy changes ([21dab00](https://github.com/Hyphen/openfeature-provider-javascript-web/commit/21dab00644d6cca918d629400b3ff191740964bf))
+
 ## [1.0.2](https://github.com/Hyphen/openfeature-provider-javascript-web/compare/v1.0.1...v1.0.2) (2025-01-06)
 
 

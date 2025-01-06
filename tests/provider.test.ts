@@ -172,7 +172,7 @@ describe('HyphenProvider', () => {
       const hookContext: HookContext = {
         logger: mockLogger,
         flagValueType: 'boolean',
-        context: {},
+        context: { application: 'test-app', environment: 'test-env' },
       } as any;
 
       const evaluationDetails: any = {
