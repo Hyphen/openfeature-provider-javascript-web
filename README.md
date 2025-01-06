@@ -18,7 +18,7 @@ The **Hyphen Toggle OpenFeature Web Provider** allows seamless feature flag eval
 
 ### Pre-requisites
  - Ensure you have Node.js and npm installed.
- - Have access to a valid Hyphen Toggle publicKey and application details.
+ - Have access to a valid Hyphen publicKey and application details.
 
 ### Installation
 To use the Hyphen Toggle OpenFeature Web Provider, install the required packages:
