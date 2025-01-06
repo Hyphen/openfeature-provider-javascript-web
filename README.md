@@ -64,8 +64,10 @@ To integrate the Hyphen Toggle provider into your application, follow these step
             email: 'user@example.com',
             role: 'admin',
           };
+          
           OpenFeature.setContext({
             targetingKey: user.id,
+            user: user,
             customAttributes: { role: user.role }, // Additional targeting attributes
           });
    
