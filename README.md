@@ -46,9 +46,7 @@ To integrate the Hyphen Toggle provider into your application, follow these step
    
    OpenFeature.setProvider(new HyphenProvider(publicKey, options));
    
-   OpenFeature.addHandler(ProviderEvents.Ready, () => {
-     createRoot(document.getElementById('root')!).render(<App />);
-   });
+   createRoot(document.getElementById('root')!).render(<App />);
    ```
 
 2. **Set Up the context**: Use ``OpenFeature.setContext`` to configure the context needed for feature targeting. This context should include relevant user information, typically obtained from an authentication process.

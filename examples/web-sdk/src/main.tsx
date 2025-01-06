@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { OpenFeature, ProviderEvents } from '@openfeature/web-sdk';
+import { OpenFeature } from '@openfeature/web-sdk';
 import { HyphenProvider, HyphenProviderOptions } from '@hyphen/openfeature-web-provider';
 import App from './App.tsx';
 
@@ -12,6 +12,4 @@ const options: HyphenProviderOptions = {
 
 OpenFeature.setProvider(new HyphenProvider(publicKey, options));
 
-OpenFeature.addHandler(ProviderEvents.Ready, () => {
-  createRoot(document.getElementById('root')!).render(<App />);
-});
+createRoot(document.getElementById('root')!).render(<App />);
