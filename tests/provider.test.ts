@@ -14,12 +14,6 @@ import type { Evaluation, EvaluationResponse } from '../src';
 import lscache from 'lscache';
 
 vi.mock('../src/hyphenClient');
-vi.mock('../src/config', () => ({
-  horizon: { url: 'https://mock-horizon-url.com' },
-  horizonEndpoints: {
-    telemetry: 'https://mock-horizon-url.com/telemetry',
-  },
-}));
 vi.mock('lscache', () => {
   const store = new Map<string, any>();
 

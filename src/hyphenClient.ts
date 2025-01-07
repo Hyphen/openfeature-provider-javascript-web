@@ -1,14 +1,16 @@
 import { EvaluationResponse, HyphenEvaluationContext, TelemetryPayload } from './types';
-import { horizon } from './config';
 import { Logger } from '@openfeature/web-sdk';
+import { buildDefaultHorizonUrl } from './utils';
 
 export class HyphenClient {
   private readonly publicKey: string;
   private readonly horizonUrls: string[];
+  private readonly defaultHorizonUrl: string;
 
   constructor(publicKey: string, horizonUrls: string[] = []) {
     this.publicKey = publicKey;
-    this.horizonUrls = [...(horizonUrls || []), horizon.url];
+    this.defaultHorizonUrl = buildDefaultHorizonUrl(publicKey);
+    this.horizonUrls = [...(horizonUrls || []), this.defaultHorizonUrl];
   }
 
   async evaluate(context: HyphenEvaluationContext, logger?: Logger): Promise<EvaluationResponse> {
