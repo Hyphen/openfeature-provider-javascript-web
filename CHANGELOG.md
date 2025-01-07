@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/Hyphen/openfeature-provider-javascript-web/compare/v1.0.3...v1.0.4) (2025-01-07)
+
+
+### Bug Fixes
+
+*  replaced the static URL config with dynamic URL ([#14](https://github.com/Hyphen/openfeature-provider-javascript-web/issues/14)) ([87738d2](https://github.com/Hyphen/openfeature-provider-javascript-web/commit/87738d2aaa29fd2384310025d04608b1321714cc))
+
 ## [1.0.3](https://github.com/Hyphen/openfeature-provider-javascript-web/compare/v1.0.2...v1.0.3) (2025-01-06)
 
 
