@@ -75,6 +75,7 @@ To integrate the Hyphen Toggle provider into your application, follow these step
 |------------------|--------|------------------------------------------------------------------------------------|
 | `application`    | string | The application id or alternate id.                                                |
 | `environment`    | string | The environment in which your application is running (e.g., `production`, `staging`). |
+| `horizonUrls`    | string[] | An array of Hyphen Horizon URLs to use for fetching feature flags.                |
 | `enableToggleUsage` | boolean | Enable or disable the logging of toggle usage (telemetry).                         |
 
 ### Context
