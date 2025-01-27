@@ -9,13 +9,6 @@ export type HyphenProviderOptions = {
   horizonUrls?: string[];
   /** Flag to enable toggle usage */
   enableToggleUsage?: boolean;
-  /** The cache options for the provider */
-  cache?: {
-    /** The time-to-live (TTL) in seconds for the cache. */
-    ttlSeconds?: number;
-    /** Generate a cache key function for the evaluation context. */
-    generateCacheKey?: (context: HyphenEvaluationContext) => string;
-  };
 };
 
 type WithUndefined<T> = {
