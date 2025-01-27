@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import hash from 'object-hash';
 import { HyphenClient } from '../src/hyphenClient';
 import {
   type BeforeHookContext,
@@ -11,30 +10,8 @@ import {
 } from '@openfeature/web-sdk';
 import { type EvaluationParams, type HyphenEvaluationContext, HyphenProvider, TelemetryPayload } from '../src';
 import type { Evaluation, EvaluationResponse } from '../src';
-import lscache from 'lscache';
 
 vi.mock('../src/hyphenClient');
-vi.mock('lscache', () => {
-  const store = new Map<string, any>();
-
-  return {
-    default: {
-      set: vi.fn((key: string, value: any, ttlMinutes: number) => {
-        const expirationTime = Date.now() + ttlMinutes * 60 * 1000;
-        store.set(key, { value, expirationTime });
-      }),
-      get: vi.fn((key: string) => {
-        const item = store.get(key);
-        if (item && item.expirationTime > Date.now()) {
-          return item.value;
-        }
-        store.delete(key);
-        return null;
-      }),
-      flush: vi.fn(() => store.clear()),
-    },
-  };
-});
 
 const createMockEvaluation = (
   key: string,
@@ -73,7 +50,6 @@ describe('HyphenProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    lscache.flush();
     provider = new HyphenProvider(publicKey, options);
   });
 
@@ -222,24 +198,14 @@ describe('HyphenProvider', () => {
     });
   });
 
-  describe('generateCacheKey', () => {
-    it('should use a custom cache key generator if provided', () => {
-      const customKeyFn = vi.fn(() => 'custom-key');
-      const customProvider = new HyphenProvider(publicKey, { ...options, cache: { generateCacheKey: customKeyFn } });
-
-      // @ts-ignore
-      const cacheKey = customProvider['generateCacheKey'](mockContext);
-      expect(customKeyFn).toHaveBeenCalledWith(mockContext);
-      expect(cacheKey).toEqual('custom-key');
-    });
-  });
-
-  describe('Cache Management', () => {
-    it('should retrieve cached evaluations using hashed key', () => {
-      const mockResponse = { toggles: { 'test-flag': createMockEvaluation('test-flag', true, 'boolean') } };
-      const cacheKey = hash(mockContext);
-
-      lscache.set(cacheKey, mockResponse.toggles, 1);
+  describe('evaluationResponse', () => {
+    it('should retrieve evaluations from the evaluation response', () => {
+      const mockResponse = {
+        toggles: {
+          'test-flag': createMockEvaluation('test-flag', true, 'boolean'),
+        },
+      };
+      provider['evaluationResponse'] = mockResponse;
 
       const result = provider['getEvaluation']({
         flagKey: 'test-flag',
@@ -255,49 +221,7 @@ describe('HyphenProvider', () => {
         reason: 'EVALUATED',
       });
     });
-  });
 
-  describe('fetchAndCacheEvaluation', () => {
-    it('should fetch evaluation and cache the toggles', async () => {
-      const mockCacheClient = lscache;
-      const mockTTLMinutes = 5;
-
-      const mockContext: HyphenEvaluationContext = {
-        targetingKey: 'test-key',
-        application: 'test-app',
-        environment: 'test-env',
-      };
-
-      const mockResponse: EvaluationResponse = {
-        toggles: {
-          'test-flag': {
-            key: 'test-flag',
-            value: true,
-            type: 'boolean',
-            reason: 'EVALUATED',
-          },
-        },
-      };
-
-      const providerWithCustomTTL = new HyphenProvider(publicKey, {
-        horizonUrls: ['https://mock-url.com'],
-        application: 'test-app',
-        environment: 'test-env',
-        cache: { ttlSeconds: mockTTLMinutes * 60 },
-      });
-
-      const evaluateSpy = vi
-        .spyOn(providerWithCustomTTL['hyphenClient'], 'evaluate')
-        .mockResolvedValue(mockResponse);
-
-      const expectedCacheKey = hash(mockContext);
-
-      await providerWithCustomTTL['fetchAndCacheEvaluation'](mockContext);
-
-      expect(evaluateSpy).toHaveBeenCalledWith(mockContext);
-
-      expect(mockCacheClient.set).toHaveBeenCalledWith(expectedCacheKey, mockResponse.toggles, mockTTLMinutes);
-    });
   });
 
   describe('validateFlagType', () => {
@@ -317,50 +241,6 @@ describe('HyphenProvider', () => {
       expect(() => {
         provider['validateFlagType'](type, invalidValue);
       }).toThrowError(new TypeMismatchError(`Value does not match type ${type}`));
-    });
-  });
-
-  describe('getEvaluation with hashed cache key', () => {
-    it('should retrieve cached evaluation using hashed key', () => {
-      const mockEvaluationResponse: EvaluationResponse = {
-        toggles: {
-          'flag-key': createMockEvaluation('flag-key', 'value', 'string'),
-        },
-      };
-
-      const cacheKey = hash(mockContext);
-      lscache.set(cacheKey, mockEvaluationResponse.toggles, 1);
-
-      const result = provider['getEvaluation']({
-        flagKey: 'flag-key',
-        defaultValue: 'default',
-        expectedType: 'string',
-        context: mockContext,
-        logger: mockLogger,
-      });
-
-      expect(result).toEqual({
-        value: 'value',
-        variant: 'value',
-        reason: 'EVALUATED',
-      });
-    });
-
-    it('should return the default value and log an error when the requested flag is not found in the cache', () => {
-      lscache.flush();
-
-      const result = provider['getEvaluation']({
-        flagKey: 'missing-key',
-        defaultValue: 'default',
-        expectedType: 'string',
-        context: mockContext,
-        logger: mockLogger,
-      });
-
-      expect(result).toEqual({
-        value: 'default',
-        errorCode: 'FLAG_NOT_FOUND',
-      });
     });
   });
 
@@ -410,7 +290,7 @@ describe('HyphenProvider', () => {
   });
 
   describe('resolveBooleanEvaluation', () => {
-    it('should return a boolean evaluation', () => {
+    it('should return a boolean evaluation from the evaluation response', () => {
       const mockEvaluationResponse: EvaluationResponse = {
         toggles: {
           'flag-key': createMockEvaluation('flag-key', true, 'boolean'),
@@ -418,8 +298,8 @@ describe('HyphenProvider', () => {
       };
 
       vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
-      const cacheKey = hash(mockContext);
-      lscache.set(cacheKey, mockEvaluationResponse.toggles, 1);
+      provider['evaluationResponse'] = mockEvaluationResponse;
+
       const result = provider.resolveBooleanEvaluation('flag-key', false, mockContext, mockLogger);
 
       expect(result).toEqual({
@@ -435,9 +315,7 @@ describe('HyphenProvider', () => {
           'flag-key': createMockEvaluation('flag-key', 'not-a-boolean', 'string'),
         },
       };
-      const cacheKey = hash(mockContext);
-      lscache.set(cacheKey, mockEvaluationResponse.toggles, 1);
-
+      provider['evaluationResponse'] = mockEvaluationResponse
       const result = provider.resolveBooleanEvaluation('flag-key', false, mockContext, mockLogger);
 
       expect(result).toEqual({
@@ -457,8 +335,8 @@ describe('HyphenProvider', () => {
       };
 
       vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
-      const cacheKey = hash(mockContext);
-      lscache.set(cacheKey, mockEvaluationResponse.toggles, 1);
+      provider['evaluationResponse'] = mockEvaluationResponse;
+
       const result = provider.resolveStringEvaluation('flag-key', 'default', mockContext, mockLogger);
 
       expect(result).toEqual({
@@ -478,8 +356,7 @@ describe('HyphenProvider', () => {
       };
 
       vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
-      const cacheKey = hash(mockContext);
-      lscache.set(cacheKey, mockEvaluationResponse.toggles, 1);
+      provider['evaluationResponse'] = mockEvaluationResponse
 
       const result = provider.resolveNumberEvaluation('flag-key', 0, mockContext, mockLogger);
 
@@ -501,8 +378,7 @@ describe('HyphenProvider', () => {
       };
 
       vi.spyOn(HyphenClient.prototype, 'evaluate').mockResolvedValue(mockEvaluationResponse);
-      const cacheKey = hash(mockContext);
-      lscache.set(cacheKey, mockEvaluationResponse.toggles, 1);
+      provider['evaluationResponse'] = mockEvaluationResponse
 
       const result = provider.resolveObjectEvaluation('flag-key', {}, mockContext, mockLogger);
 
@@ -556,23 +432,17 @@ describe('HyphenProvider', () => {
       };
 
       const validateContextSpy = vi.spyOn(provider as any, 'validateContext').mockReturnValue(validatedContext);
-      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation').mockResolvedValue(undefined);
 
       await provider.initialize(mockContext);
 
       expect(validateContextSpy).toHaveBeenCalledWith(validatedContext);
-
-      expect(fetchAndCacheSpy).toHaveBeenCalledWith(validatedContext);
     });
 
     it('should do nothing if context is not provided', async () => {
       const validateContextSpy = vi.spyOn(provider as any, 'validateContext');
-      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation');
-
       await provider.initialize(undefined);
 
       expect(validateContextSpy).not.toHaveBeenCalled();
-      expect(fetchAndCacheSpy).not.toHaveBeenCalled();
     });
 
     it('should do nothing if context does not have a targetingKey', async () => {
@@ -582,12 +452,10 @@ describe('HyphenProvider', () => {
       };
 
       const validateContextSpy = vi.spyOn(provider as any, 'validateContext');
-      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation');
 
       await provider.initialize(invalidContext);
 
       expect(validateContextSpy).not.toHaveBeenCalled();
-      expect(fetchAndCacheSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -625,7 +493,6 @@ describe('HyphenProvider', () => {
       const isContextEqualSpy = vi.spyOn(provider as any, 'isContextEqual').mockReturnValue(false);
 
       const validateContextSpy = vi.spyOn(provider as any, 'validateContext').mockReturnValue(validatedContext);
-      const fetchAndCacheSpy = vi.spyOn(provider as any, 'fetchAndCacheEvaluation').mockResolvedValue(undefined);
 
       await provider.onContextChange?.(oldContext, newContext);
 
@@ -633,26 +500,6 @@ describe('HyphenProvider', () => {
 
       expect(validateContextSpy).toHaveBeenCalledWith(validatedContext);
 
-      expect(fetchAndCacheSpy).toHaveBeenCalledWith(validatedContext);
-    });
-  });
-
-  describe('Cache TTL configuration', () => {
-    it('should set ttlMinutes from options.cache.ttlSeconds when provided', () => {
-      const optionsWithCache = {
-        ...options,
-        cache: {
-          ttlSeconds: 300, // 5 minutes in seconds
-        },
-      };
-
-      const providerWithCache = new HyphenProvider(publicKey, optionsWithCache);
-      expect(providerWithCache['ttlMinutes']).toBe(5);
-    });
-
-    it('should keep default ttlMinutes when cache.ttlSeconds is not provided', () => {
-      const providerWithoutCache = new HyphenProvider(publicKey, options);
-      expect(providerWithoutCache['ttlMinutes']).toBe(1); // Default value
     });
   });
 
