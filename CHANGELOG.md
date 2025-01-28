@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/Hyphen/openfeature-provider-javascript-web/compare/v1.0.4...v1.0.5) (2025-01-28)
+
+
+### Bug Fixes
+
+* remove lscache dependency and caching logic ([#16](https://github.com/Hyphen/openfeature-provider-javascript-web/issues/16)) ([ae35250](https://github.com/Hyphen/openfeature-provider-javascript-web/commit/ae35250d33d729b97b44ff35bea85ec0112d2889))
+
 ## [1.0.4](https://github.com/Hyphen/openfeature-provider-javascript-web/compare/v1.0.3...v1.0.4) (2025-01-07)
 
 
