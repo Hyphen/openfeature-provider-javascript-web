@@ -1,4 +1,3 @@
-import lscache from 'lscache';
 import hash from 'object-hash';
 import {
   type BeforeHookContext,
@@ -21,7 +20,7 @@ import {
 import pkg from '../package.json';
 import {
   type Evaluation,
-  type EvaluationParams,
+  type EvaluationParams, EvaluationResponse,
   type HyphenEvaluationContext,
   type HyphenProviderOptions,
   TelemetryPayload,
@@ -31,8 +30,7 @@ import { HyphenClient } from './hyphenClient';
 export class HyphenProvider implements Provider {
   public readonly options: HyphenProviderOptions;
   private readonly hyphenClient: HyphenClient;
-  private readonly cacheClient = lscache;
-  private ttlMinutes = 1;
+  private evaluationResponse: EvaluationResponse | undefined;
 
   public events: OpenFeatureEventEmitter;
   public runsOn: Paradigm = 'client';
@@ -53,7 +51,6 @@ export class HyphenProvider implements Provider {
     this.hyphenClient = new HyphenClient(publicKey, options.horizonUrls);
     this.options = options;
     this.events = new OpenFeatureEventEmitter();
-    this.ttlMinutes = options.cache?.ttlSeconds ? options.cache.ttlSeconds / 60 : this.ttlMinutes;
 
     const hook: Hook = {
       before: this.beforeHook,
@@ -121,19 +118,11 @@ export class HyphenProvider implements Provider {
     return `${this.options.application}-${this.options.environment}-${Math.random().toString(36).substring(7)}`;
   }
 
-  private async fetchAndCacheEvaluation(context: HyphenEvaluationContext) {
-    const evaluationResponse = await this.hyphenClient.evaluate(context);
-    const cacheKey = this.generateCacheKey(context);
-
-    const toggles = evaluationResponse.toggles;
-    this.cacheClient.set(cacheKey, toggles, this.ttlMinutes);
-  }
-
   async initialize(context?: EvaluationContext): Promise<void> {
     if (context && context.targetingKey) {
       const { application, environment } = this.options;
       const validatedContext = this.validateContext({ ...context, application, environment });
-      await this.fetchAndCacheEvaluation(validatedContext);
+      this.evaluationResponse = await this.hyphenClient.evaluate(validatedContext);
     }
   }
 
@@ -143,7 +132,7 @@ export class HyphenProvider implements Provider {
 
     if (hasContextChanged) {
       const validatedContext = this.validateContext({ ...newContext, application, environment });
-      await this.fetchAndCacheEvaluation(validatedContext);
+      this.evaluationResponse = await this.hyphenClient.evaluate(validatedContext);
     }
   }
 
@@ -158,19 +147,10 @@ export class HyphenProvider implements Provider {
     flagKey,
     defaultValue,
     expectedType,
-    context,
     logger,
   }: EvaluationParams<T>): ResolutionDetails<T> {
-    const { application, environment } = this.options;
-    const evaluationContext = {
-      ...context,
-      application,
-      environment,
-    };
-    const contextKey = this.generateCacheKey(evaluationContext as HyphenEvaluationContext);
-    const cache = this.cacheClient.get(contextKey) || {};
+    const evaluation = this.evaluationResponse?.toggles?.[flagKey];
 
-    const evaluation = cache?.[flagKey];
     const evaluationError = this.getEvaluationParseError({
       flagKey,
       evaluation,
@@ -180,27 +160,33 @@ export class HyphenProvider implements Provider {
     });
     if (evaluationError) return evaluationError;
 
-    const value = this.validateFlagType(expectedType, evaluation.value);
+    if (evaluation) {
+      const value = this.validateFlagType<FlagValue>(expectedType, evaluation.value);
+      return {
+        value: value as T,
+        variant: evaluation.value?.toString(),
+        reason: evaluation.reason,
+      };
+    }
 
     return {
-      value: value as T,
-      variant: evaluation.value?.toString(),
-      reason: evaluation.reason,
+      value: defaultValue,
+      reason: StandardResolutionReasons.ERROR,
+      errorCode: ErrorCode.FLAG_NOT_FOUND,
     };
   }
 
-  validateFlagType<T extends string>(type: Evaluation['type'], value: T): string | number | boolean | object {
+  validateFlagType<T extends FlagValue>(type: Evaluation['type'], value: T): FlagValue {
     switch (type) {
       case 'number': {
-        const parsedValue = parseFloat(value);
-        if (isNaN(parsedValue)) {
+        if (isNaN(value as number)) {
           throw new TypeMismatchError(`Value does not match type ${type}`);
         }
-        return parsedValue;
+        return value;
       }
       case 'object': {
         try {
-          return JSON.parse(value);
+          return JSON.parse(value as string);
         } catch {
           throw new TypeMismatchError(`Value does not match type ${type}`);
         }
@@ -220,7 +206,6 @@ export class HyphenProvider implements Provider {
       flagKey,
       defaultValue,
       expectedType: 'boolean',
-      context,
       logger,
     });
   }
@@ -235,7 +220,6 @@ export class HyphenProvider implements Provider {
       flagKey,
       defaultValue,
       expectedType: 'string',
-      context,
       logger,
     });
   }
@@ -250,7 +234,6 @@ export class HyphenProvider implements Provider {
       flagKey,
       defaultValue,
       expectedType: 'number',
-      context,
       logger,
     });
   }
@@ -265,7 +248,6 @@ export class HyphenProvider implements Provider {
       flagKey,
       defaultValue,
       expectedType: 'object',
-      context,
       logger,
     });
   }
@@ -320,13 +302,6 @@ export class HyphenProvider implements Provider {
         logger,
       });
     }
-  }
-
-  private generateCacheKey(context: HyphenEvaluationContext): string {
-    if (this.options.cache?.generateCacheKey && typeof this.options.cache.generateCacheKey === 'function') {
-      return this.options.cache.generateCacheKey(context);
-    }
-    return hash(context);
   }
 
   private validateContext(context: EvaluationContext): HyphenEvaluationContext {
