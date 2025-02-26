@@ -65,6 +65,40 @@ describe('HyphenProvider', () => {
         'Environment is required',
       );
     });
+
+    it('should accept a valid project environment ID', () => {
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'pevr_abc123' })).not.toThrow();
+    });
+
+    it('should accept a valid alternateId', () => {
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'production' })).not.toThrow();
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'prod-env' })).not.toThrow();
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'prod_env_123' })).not.toThrow();
+    });
+
+    it('should throw an error if environment format is invalid', () => {
+      // Invalid: contains uppercase letters
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'Production' })).toThrowError(
+        /Invalid environment format/,
+      );
+
+      // Invalid: too long (more than 25 characters)
+      expect(() => new HyphenProvider(publicKey, { 
+        ...options, 
+        environment: 'this-is-a-very-long-environment-name-that-exceeds-the-limit' 
+      })).toThrowError(/Invalid environment format/);
+
+      // Invalid: contains the word "environments"
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'test-environments-prod' })).toThrowError(
+        /Invalid environment format/,
+      );
+
+      // Invalid: contains special characters other than hyphens and underscores
+      expect(() => new HyphenProvider(publicKey, { ...options, environment: 'test@env' })).toThrowError(
+        /Invalid environment format/,
+      );
+    });
+
     it('should delete the after hook if enableToggleUsage is false', () => {
       const optionsWithToggleDisabled = {
         ...options,
