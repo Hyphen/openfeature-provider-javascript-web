@@ -20,7 +20,8 @@ import {
 import pkg from '../package.json';
 import {
   type Evaluation,
-  type EvaluationParams, EvaluationResponse,
+  type EvaluationParams,
+  EvaluationResponse,
   type HyphenEvaluationContext,
   type HyphenProviderOptions,
   TelemetryPayload,
@@ -178,6 +179,14 @@ export class HyphenProvider implements Provider {
 
   validateFlagType<T extends FlagValue>(type: Evaluation['type'], value: T): FlagValue {
     switch (type) {
+      case 'boolean': {
+        if (typeof value === 'string') {
+          return value.toLowerCase() === 'true';
+        } else if (typeof value === 'boolean') {
+          return value;
+        }
+        throw new TypeMismatchError(`Value does not match type ${type}`);
+      }
       case 'number': {
         if (isNaN(value as number)) {
           throw new TypeMismatchError(`Value does not match type ${type}`);
