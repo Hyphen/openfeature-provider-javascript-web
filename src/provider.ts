@@ -20,7 +20,8 @@ import {
 import pkg from '../package.json';
 import {
   type Evaluation,
-  type EvaluationParams, EvaluationResponse,
+  type EvaluationParams,
+  EvaluationResponse,
   type HyphenEvaluationContext,
   type HyphenProviderOptions,
   TelemetryPayload,
@@ -173,6 +174,14 @@ export class HyphenProvider implements Provider {
 
   validateFlagType<T extends FlagValue>(type: Evaluation['type'], value: T): FlagValue {
     switch (type) {
+      case 'boolean': {
+        if (typeof value === 'string') {
+          return value.toLowerCase() === 'true';
+        } else if (typeof value === 'boolean') {
+          return value;
+        }
+        throw new TypeMismatchError(`Value does not match type ${type}`);
+      }
       case 'number': {
         if (isNaN(value as number)) {
           throw new TypeMismatchError(`Value does not match type ${type}`);
@@ -306,21 +315,21 @@ export class HyphenProvider implements Provider {
     if (!options.environment) {
       throw new Error('Environment is required');
     }
-    
+
     this.validateEnvironmentFormat(options.environment);
   }
-  
+
   private validateEnvironmentFormat(environment: string): void {
     // Check if it's a project environment ID (starts with 'pevr_')
     const isEnvironmentId = environment.startsWith('pevr_');
-    
+
     // Check if it's a valid alternateId (1-25 chars, lowercase letters, numbers, hyphens, underscores)
     const isValidAlternateId = /^(?!.*\b(environments)\b)[a-z0-9\-_]{1,25}$/.test(environment);
-    
+
     if (!isEnvironmentId && !isValidAlternateId) {
       throw new Error(
         'Invalid environment format. Must be either a project environment ID (starting with "pevr_") ' +
-        'or a valid alternateId (1-25 characters, lowercase letters, numbers, hyphens, and underscores).'
+          'or a valid alternateId (1-25 characters, lowercase letters, numbers, hyphens, and underscores).',
       );
     }
   }
