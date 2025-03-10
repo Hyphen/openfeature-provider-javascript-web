@@ -3,13 +3,27 @@ import type { EvaluationContext, FlagValue, Logger, ResolutionReason } from '@op
 export type HyphenProviderOptions = {
   /** The application name or ID for the current evaluation. */
   application: string;
-  /** The environment for the Hyphen project (e.g., `production`, `staging`). */
+  /** 
+   * The environment identifier for the Hyphen project.
+   * This can be either:
+   * - A project environment ID (e.g., `pevr_abc123`)
+   * - A valid alternateId (1-25 characters, lowercase letters, numbers, hyphens, and underscores)
+   */
   environment: string;
   /** The Hyphen server URL */
   horizonUrls?: string[];
   /** Flag to enable toggle usage */
   enableToggleUsage?: boolean;
+  /** The cache options for the provider */
+  cache?: {
+    /** The time-to-live (TTL) in seconds for the cache. */
+    ttlSeconds?: number;
+    /** Generate a cache key function for the evaluation context. */
+    generateCacheKeyFn?: GenerateCacheKeyFn;
+  };
 };
+
+export type GenerateCacheKeyFn = (context: HyphenEvaluationContext) => string;
 
 type WithUndefined<T> = {
   [P in keyof T]: T[P] extends object ? WithUndefined<T[P]> | undefined : T[P] | undefined;
