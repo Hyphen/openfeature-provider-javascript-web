@@ -82,7 +82,7 @@ To integrate the Hyphen Toggle provider into your application, follow these step
       return (
         <div>
           <header>
-            {isFeatureEnabled ? <p>Welcome to this OpenFeature-enabled React app!</p> : <p>Welcome to this React app.</p>}
+            {isFeatureEnabled ? <p>Welcome to this Hyphen toggle-enabled React app!</p> : <p>Welcome to this React app.</p>}
           </header>
         </div>
       )
